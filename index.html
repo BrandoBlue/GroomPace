@@ -12,6 +12,11 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..700&family=Fraunces:opsz,wght@9..144,400..700&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#FBF7F2;--card:#FFF;--ca:#F6F0E8;--bd:#EDE4D9;--bl:#F5EDE4;--ro:#D4849A;--rd:#B8667E;--rs:#F3D4DE;--rg:rgba(212,132,154,.08);--sg:#7BAF8E;--ss:rgba(123,175,142,.1);--hn:#D4A85C;--hs:rgba(212,168,92,.1);--lv:#9B8DC4;--ls:rgba(155,141,196,.1);--co:#D98B7B;--cs:rgba(217,139,123,.1);--tx:#2E2627;--tm:#5E4D50;--mu:#8E7C7F;--di:#BCA8AB;--wh:#FFF;--sh:0 2px 16px rgba(46,38,39,.06);--su:0 6px 24px rgba(46,38,39,.1);--r:16px}
+/* Native Dark Mode Support */
+@media (prefers-color-scheme: dark){
+  :root{--bg:#121212;--card:#1C1C1E;--ca:#2C2C2E;--bd:#3A3A3C;--bl:#2C2C2E;--ro:#E598AB;--rd:#D47A94;--rs:#4A2A33;--rg:rgba(229,152,171,.1);--sg:#7CB691;--ss:rgba(124,182,145,.15);--hn:#D4A85C;--hs:rgba(212,168,92,.15);--lv:#9B8DC4;--ls:rgba(155,141,196,.15);--co:#D98B7B;--cs:rgba(217,139,123,.15);--tx:#F2F2F7;--tm:#AEAEB2;--mu:#8E8E93;--di:#636366;--wh:#FFF;--sh:0 2px 16px rgba(0,0,0,.4);--su:0 6px 24px rgba(0,0,0,.6);}
+  .nav{background:rgba(28,28,30,.94)!important;}
+}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{background:var(--bg);color:var(--tx);font-family:'DM Sans',-apple-system,sans-serif;-webkit-font-smoothing:antialiased;min-height:100dvh;overscroll-behavior:none}
 button{font-family:inherit;cursor:pointer;border:none;background:none;outline:none;}
@@ -23,9 +28,15 @@ h1,h2,h3{font-family:'Fraunces',serif;font-weight:600}
 .nav button{flex:1;display:flex;flex-direction:column;align-items:center;padding:12px 4px 8px;color:var(--di);transition:color .2s}
 .nav button.on{color:var(--rd)}
 .nav .ni{font-size:22px;margin-bottom:2px}.nav .nl{font-size:10px;letter-spacing:.3px}.nav button.on .nl{font-weight:600}
+
+/* Smooth Tab Transitions */
+.fade-in{animation:fadeIn 0.25s cubic-bezier(0.2,0.8,0.2,1) forwards}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fi{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}.fi{animation:fi .35s ease-out forwards}
+
 .c{background:var(--card);border-radius:var(--r);box-shadow:var(--sh)}
 .inp{width:100%;padding:14px;background:var(--bg);border:1px solid var(--bd);border-radius:12px;color:var(--tx);font-size:15px;transition:border-color .2s}.inp:focus{border-color:var(--ro)}
+input[type="date"].inp {min-height: 50px; font-family: inherit;}
 textarea.inp{resize:vertical;min-height:60px}
 .lbl{font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:6px;display:block;font-weight:600}
 .pill{padding:10px 14px;border:1px solid var(--bd);border-radius:12px;font-size:13px;color:var(--mu);transition:all .2s;text-align:center;}
@@ -50,6 +61,7 @@ textarea.inp{resize:vertical;min-height:60px}
     <div class="pad" id="ct"></div>
     <div class="nav" id="nv"></div>
     <div id="modalRoot"></div>
+    <datalist id="breedList"></datalist>
 </div>
 <script>
 const SK='groompace-v3';
@@ -103,17 +115,39 @@ const CHK=[
 
 // ── State ──
 let S={tab:'home',sub:'blades',sub2:'achievements',logs:[],chk:{},breedNotes:{},goals:{dogsPerDay:0,avgTarget:0},
+standards:[],
 timerStart:null,timerRunning:false,timerSplits:[],timerBreed:'',timerStyle:'',timerSize:'medium',timerBeforePhoto:null,
 timerReview:null, 
 showForm:false,editId:null, 
 showBreedForm:false,editBreedKey:null, 
+showStdForm:false,editStdId:null,
 onboarded:false};
 let TI=null;
 
 // Modal State
 let _modal = null;
 
-function load(){try{const d=JSON.parse(localStorage.getItem(SK));if(d){Object.assign(S,d);S.timerRunning=false;S.timerReview=S.timerReview||null;if(!S.breedNotes)S.breedNotes={};if(!S.goals)S.goals={dogsPerDay:0,avgTarget:0}}}catch(e){}}
+function load(){
+    try{const d=JSON.parse(localStorage.getItem(SK));
+    if(d){
+        Object.assign(S,d);
+        S.timerRunning=false;S.timerReview=S.timerReview||null;
+        if(!S.breedNotes)S.breedNotes={};
+        if(!S.goals)S.goals={dogsPerDay:0,avgTarget:0};
+        if(!S.standards)S.standards=[];
+    }}catch(e){}
+    
+    // Default standard if none exist
+    if(S.standards.length === 0) {
+        S.standards.push({
+            id: 'std_' + Date.now(),
+            title: 'Small to medium dog (3 blade and under)',
+            aim: 40,
+            max: 60,
+            text: "1. Pre work (nails, paw pads, sani) - 5-8 min\n2. Brush out dog (even if short hair) - 3-10 min\n3. Body shave - 8-15 min\n4. Scissor legs and feet - 10 min\n5. Head and face - 10-15 min\n6. Tail - 3-5 min\n7. Look over dog for any sticky outties, take a step back and look"
+        });
+    }
+}
 function save(){try{const o={...S};localStorage.setItem(SK,JSON.stringify(o))}catch(e){}}
 
 // ── Helpers ──
@@ -130,33 +164,40 @@ function weekLogs(){const now=Date.now(),wk=7*864e5;return S.logs.filter(l=>l.ts
 function quote(){const q=["Every dog you finish faster proves you're growing.","Speed comes from confidence — you're building both.","It's not rushing. It's eliminating waste.","The best groomers work smarter, not harder.","Your hands know what to do. Trust the system.","Consistency creates speed. Do the reps.","Quality got you here. Systems take you further."];return q[Math.floor(Date.now()/864e5)%q.length]}
 function compressPhoto(file,cb){const r=new FileReader();r.onload=function(e){const img=new Image();img.onload=function(){const c=document.createElement('canvas');const max=400;let w=img.width,h=img.height;if(w>max||h>max){if(w>h){h=Math.round(h*(max/w));w=max;}else{w=Math.round(w*(max/h));h=max;}}c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);cb(c.toDataURL('image/jpeg',0.5))};img.src=e.target.result};r.readAsDataURL(file)}
 
-// Modal Actions
-function showAlert(msg) { _modal = { type: 'alert', msg }; R(); }
-function showConfirm(msg, onConfirm) { _modal = { type: 'confirm', msg, onConfirm }; R(); }
+// UI Helpers
+function vib(){if(navigator.vibrate)navigator.vibrate(40);}
+function showAlert(msg) { vib(); _modal = { type: 'alert', msg }; R(); }
+function showConfirm(msg, onConfirm) { vib(); _modal = { type: 'confirm', msg, onConfirm }; R(); }
 
 // ── Timer ──
-function startTimer(){S.timerStart=Date.now();S.timerRunning=true;S.timerSplits=[];S.timerReview=null;save();tick();R()}
+function startTimer(){vib(); S.timerStart=Date.now();S.timerRunning=true;S.timerSplits=[];S.timerReview=null;save();tick();R()}
 function tick(){clearInterval(TI);TI=setInterval(()=>{const el=document.getElementById('tn');if(el)el.textContent=fmtT(elapsed())},200)}
-function split(label){S.timerSplits.push({label,time:Date.now()});save();R()}
+function split(label){vib(); S.timerSplits.push({label,time:Date.now()});save();R()}
 
 // STOP → create review data, don't auto-save
 function stopTimer(){
+  vib();
   clearInterval(TI);S.timerRunning=false;
   const tot=elapsed();
   const sp=S.timerSplits;
-  let cl=0,sc=0,fi=0;
+  let pw=0,bo=0,bs=0,sl=0,hf=0,ta=0,fi=0;
   let lastTime = S.timerStart;
   
+  const steps = {pw:'Prework',bo:'Brush',bs:'Shave',sl:'Legs/Feet',hf:'Head/Face',ta:'Tail',fi:'Finished'};
   const parsedSplits = sp.map((x) => {
       const durationMs = x.time - lastTime;
       const durationM = fmtM(durationMs);
-      if(x.label === 'clipper') cl = durationM;
-      if(x.label === 'scissor') sc = durationM;
-      if(x.label === 'finish') fi = durationM;
+      if(x.label === 'pw') pw = durationM;
+      if(x.label === 'bo') bo = durationM;
+      if(x.label === 'bs') bs = durationM;
+      if(x.label === 'sl') sl = durationM;
+      if(x.label === 'hf') hf = durationM;
+      if(x.label === 'ta') ta = durationM;
+      if(x.label === 'fi') fi = durationM;
       
       const formattedDur = fmtT(durationMs);
       lastTime = x.time;
-      return { label: x.label, dur: formattedDur };
+      return { label: steps[x.label] || x.label, dur: formattedDur };
   });
 
   S.timerReview={
@@ -164,25 +205,33 @@ function stopTimer(){
       style:S.timerStyle||'',
       size:S.timerSize,
       min:fmtM(tot),
-      cl,sc,fi,
+      pw,bo,bs,sl,hf,ta,fi,
       before:S.timerBeforePhoto||null,
       splits:parsedSplits
   };
   S.timerStart=null;S.timerSplits=[];save();R();
 }
-function cancelTimer(){clearInterval(TI);S.timerStart=null;S.timerRunning=false;S.timerSplits=[];S.timerReview=null;S.timerBeforePhoto=null;save();R()}
+function cancelTimer(){vib(); clearInterval(TI);S.timerStart=null;S.timerRunning=false;S.timerSplits=[];S.timerReview=null;S.timerBeforePhoto=null;save();R()}
 
 // Save from review screen
 let _rvDf=1,_rvAfter=null;
 function saveReview(){
+  vib();
   const rv=S.timerReview;if(!rv)return;
   const notes=(document.getElementById('rvNotes')||{}).value||'';
-  S.logs.unshift({id:Date.now(),ts:Date.now(),date:new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),breed:rv.breed,style:rv.style,size:rv.size,min:rv.min,cl:rv.cl,sc:rv.sc,fi:rv.fi,diff:_rvDf,notes:notes.trim(),timed:true,before:rv.before,after:_rvAfter});
+  S.logs.unshift({id:Date.now(),ts:Date.now(),date:new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),breed:rv.breed,style:rv.style,size:rv.size,min:rv.min,pw:rv.pw,bo:rv.bo,bs:rv.bs,sl:rv.sl,hf:rv.hf,ta:rv.ta,fi:rv.fi,diff:_rvDf,notes:notes.trim(),timed:true,before:rv.before,after:_rvAfter});
   S.timerReview=null;S.timerBeforePhoto=null;_rvDf=1;_rvAfter=null;save();S.tab='log';R();
 }
 function discardReview(){showConfirm("Discard this timed groom?", () => {S.timerReview=null;S.timerBeforePhoto=null;_rvDf=1;_rvAfter=null;save();R();});}
 
 // ── Render ──
+function updateDatalist() {
+    const list = document.getElementById('breedList');
+    if(!list) return;
+    const breeds = [...new Set([...S.logs.map(l=>l.breed), ...Object.keys(S.breedNotes)])].filter(Boolean);
+    list.innerHTML = breeds.map(b => `<option value="${esc(b)}">`).join('');
+}
+
 function R(){
     const ct=document.getElementById('ct'),nv=document.getElementById('nv'), mod=document.getElementById('modalRoot');
     const tabs=[{k:'home',i:'🏠',l:'Home'},{k:'timer',i:'⏱️',l:'Timer'},{k:'log',i:'✂️',l:'Log'},{k:'tools',i:'🔧',l:'Tools'},{k:'me',i:'👤',l:'Me'}];
@@ -208,11 +257,21 @@ function R(){
 
     if(!S.onboarded){ct.innerHTML=renderOnboard();return}
     const fn={home:renderHome,timer:renderTimer,log:renderLog,tools:renderTools,me:renderMe};
+    
+    // Render content with a subtle fade-in
     ct.innerHTML=(fn[S.tab]||renderHome)();
+    
+    // Re-trigger animation
+    ct.classList.remove('fade-in');
+    void ct.offsetWidth; // trigger reflow
+    ct.classList.add('fade-in');
+
+    updateDatalist();
+
     if(S.timerRunning)tick();
 }
 
-function go(t){S.tab=t;S.showForm=false;S.editId=null;R();window.scrollTo({top:0,behavior:'smooth'})}
+function go(t){vib(); S.tab=t;S.showForm=false;S.editId=null;R();window.scrollTo({top:0,behavior:'smooth'})}
 
 // ════ ONBOARD ════
 function renderOnboard(){return`
@@ -222,9 +281,9 @@ function renderOnboard(){return`
 <p style="font-size:14px;color:var(--rd);font-weight:500;letter-spacing:1px;text-transform:uppercase;margin-bottom:24px">Your Personal Speed Tracker</p>
 <p style="font-size:16px;color:var(--tm);line-height:1.7;max-width:320px;margin-bottom:36px">Track your groom times, beat your personal bests, and watch yourself get faster — one dog at a time.</p>
 <div style="display:flex;flex-direction:column;gap:14px;width:100%;max-width:280px;margin-bottom:40px;text-align:left">
-${['⏱️ Live timer with section splits','📸 Before & after photos','📊 Track trends & personal bests','🔧 Blade reference & breed notes','🏆 Earn milestones as you improve','✅ Daily station prep checklist'].map(f=>`<div style="font-size:15px;color:var(--tm);display:flex;align-items:center;">${f}</div>`).join('')}
+${['⏱️ Live timer with section splits','📸 Before & after photos','📊 Track trends & personal bests','🔧 Blade reference & pace standards','🏆 Earn milestones as you improve','✅ Daily station prep checklist'].map(f=>`<div style="font-size:15px;color:var(--tm);display:flex;align-items:center;">${f}</div>`).join('')}
 </div>
-<button onclick="S.onboarded=true;save();R()" style="width:100%;max-width:280px;padding:18px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:16px;color:var(--wh);font-size:17px;font-weight:600;box-shadow:0 8px 24px rgba(212,132,154,.35)">Let's Go 🐾</button>
+<button onclick="vib(); S.onboarded=true;save();R()" style="width:100%;max-width:280px;padding:18px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:16px;color:var(--wh);font-size:17px;font-weight:600;box-shadow:0 8px 24px rgba(212,132,154,.35)">Let's Go 🐾</button>
 <p style="font-size:12px;color:var(--di);margin-top:20px">Free forever · All data stays on your phone</p>
 </div>`}
 
@@ -243,7 +302,7 @@ return`<div style="padding-top:env(safe-area-inset-top,12px)">
 <div class="c fi" style="padding:16px 8px;text-align:center"><div style="font-size:20px;margin-bottom:6px">${t>0?'📈':'📊'}</div><div style="font-family:Fraunces,serif;font-size:22px;font-weight:600;${t>0?'color:var(--sg)':''}">${t?Math.abs(t)+'m':'—'}</div><div style="font-size:11px;color:var(--di);margin-top:4px">${t>0?'Faster':t<0?'Slower':'Trend'}</div></div></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
 <button onclick="go('timer')" style="background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:var(--r);padding:22px 16px;color:var(--wh);text-align:left;box-shadow:0 8px 24px rgba(212,132,154,.3)"><div style="font-size:26px;margin-bottom:10px">⏱️</div><div style="font-size:16px;font-weight:600">Start Timer</div><div style="font-size:12px;opacity:.9;margin-top:4px">Time your next groom</div></button>
-<button class="c" onclick="go('log');setTimeout(()=>{S.showForm=true;R()},50)" style="border:1px solid var(--bd);border-radius:var(--r);padding:22px 16px;text-align:left"><div style="font-size:26px;margin-bottom:10px">✂️</div><div style="font-size:16px;font-weight:600;color:var(--tx)">Log a Groom</div><div style="font-size:12px;color:var(--mu);margin-top:4px">Manual entry</div></button></div>
+<button class="c" onclick="go('log');setTimeout(()=>{vib();S.showForm=true;R()},50)" style="border:1px solid var(--bd);border-radius:var(--r);padding:22px 16px;text-align:left"><div style="font-size:26px;margin-bottom:10px">✂️</div><div style="font-size:16px;font-weight:600;color:var(--tx)">Log a Groom</div><div style="font-size:12px;color:var(--mu);margin-top:4px">Manual entry</div></button></div>
 <div class="c" style="padding:18px;margin-bottom:14px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--lv);text-transform:uppercase;font-weight:600;margin-bottom:12px">📊 This Week</div>
 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
 <div><div style="font-family:Fraunces,serif;font-size:20px;font-weight:600">${wl.length}</div><div style="font-size:11px;color:var(--di)">Dogs</div></div>
@@ -255,7 +314,7 @@ ${S.goals.dogsPerDay?`<div style="display:flex;justify-content:space-between;fon
 </div>`:''}</div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
 <div class="c" style="padding:16px;cursor:pointer" onclick="go('me')"><div style="font-size:10px;letter-spacing:1.5px;color:var(--hn);text-transform:uppercase;font-weight:600;margin-bottom:6px">🏆 Milestones</div><div style="font-size:15px;font-weight:500">${earned}/${ACH.length}</div></div>
-<div class="c" style="padding:16px;cursor:pointer" onclick="S.tab='me';S.sub2='checklist';R()"><div style="font-size:10px;letter-spacing:1.5px;color:var(--sg);text-transform:uppercase;font-weight:600;margin-bottom:6px">✅ Daily Prep</div><div style="font-size:15px;font-weight:500">${todayDone}/${CHK.length}</div></div></div>
+<div class="c" style="padding:16px;cursor:pointer" onclick="vib(); S.tab='me';S.sub2='checklist';R()"><div style="font-size:10px;letter-spacing:1.5px;color:var(--sg);text-transform:uppercase;font-weight:600;margin-bottom:6px">✅ Daily Prep</div><div style="font-size:15px;font-weight:500">${todayDone}/${CHK.length}</div></div></div>
 ${recent.length?`<div style="margin-bottom:14px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--di);text-transform:uppercase;font-weight:600;margin-bottom:10px;margin-left:4px">Recent Grooms</div>${recent.map(l=>`<div class="c" style="padding:14px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center"><div><span style="font-size:15px;font-weight:600">${esc(l.breed)}</span>${l.style?`<span style="font-size:13px;color:var(--mu);margin-left:6px">${esc(l.style)}</span>`:''} <span style="margin-left:4px">${l.diff===3?'🔴':l.diff===2?'🟡':''}</span></div><div style="display:flex;align-items:center;gap:6px">${l.timed?'<span style="font-size:11px;color:var(--ro)">⏱</span>':''}${(l.before||l.after)?'<span style="font-size:11px">📸</span>':''}<span style="font-family:Fraunces,serif;font-size:18px;font-weight:600;color:${tc(l.min)}">${l.min}m</span></div></div>`).join('')}</div>`:''}</div>`}
 
 // ════ TIMER ════
@@ -297,10 +356,10 @@ function renderTimer(){
   if(!run&&!S.timerStart) return`
   <div style="padding-top:28px"><h2 style="font-size:26px;margin-bottom:6px">Live Timer</h2><p style="font-size:14px;color:var(--mu);margin-bottom:28px">Set up, then start when the dog hits the table.</p>
   <div class="c" style="padding:22px;margin-bottom:18px">
-    <div style="margin-bottom:16px"><label class="lbl">Breed</label><input class="inp" id="tB" placeholder="e.g. Goldendoodle" value="${esc(S.timerBreed)}"></div>
+    <div style="margin-bottom:16px"><label class="lbl">Breed</label><input class="inp" id="tB" placeholder="e.g. Goldendoodle" value="${esc(S.timerBreed)}" list="breedList"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
       <div><label class="lbl">Style</label><input class="inp" id="tS" placeholder="e.g. Teddy bear" value="${esc(S.timerStyle)}"></div>
-      <div><label class="lbl">Size</label><div style="display:flex;gap:6px">${['small','medium','large'].map(s=>`<button class="pill ${S.timerSize===s?'on':''}" style="flex:1;padding:14px 4px;" onclick="S.timerSize='${s}';save();R()">${s}</button>`).join('')}</div></div></div>
+      <div><label class="lbl">Size</label><div style="display:flex;gap:6px">${['small','medium','large'].map(s=>`<button class="pill ${S.timerSize===s?'on':''}" style="flex:1;padding:14px 4px;" onclick="vib();S.timerSize='${s}';save();R()">${s}</button>`).join('')}</div></div></div>
     <div><label class="lbl">📸 Before Photo (optional)</label>
       <label class="file-btn">
          ${S.timerBeforePhoto ? '✅ Photo Added (Tap to change)' : '📸 Tap to upload Before photo'}
@@ -312,30 +371,40 @@ function renderTimer(){
   <p style="font-size:13px;color:var(--di);text-align:center;margin-top:16px;line-height:1.6">Tap split buttons during the groom to track<br>clipper → scissor → finish time automatically.</p></div>`;
 
   // ── RUNNING SCREEN ──
+  const stMap = {pw:'Prework',bo:'Brush',bs:'Shave',sl:'Legs/Feet',hf:'Head/Face',ta:'Tail',fi:'Finished'};
   return`<div style="padding-top:40px;text-align:center">
   <div style="font-size:14px;color:var(--mu);margin-bottom:8px;font-weight:500;">${esc(S.timerBreed)} ${S.timerStyle?'· '+esc(S.timerStyle):''}</div>
   <div class="timer-num run" id="tn">${fmtT(elapsed())}</div>
-  <div style="display:flex;gap:10px;justify-content:center;margin:32px 0">
-  ${[{l:'clipper',e:'🔌',t:'Clipper'},{l:'scissor',e:'✂️',t:'Scissor'},{l:'finish',e:'✨',t:'Finish'}].map(s=>{const d=done.includes(s.l);return`<button onclick="${run&&!d?`split('${s.l}')`:''}" style="padding:14px 18px;border-radius:14px;font-size:14px;font-weight:600;${d?'background:var(--ss);color:var(--sg);':'background:var(--card);border:1px solid var(--bd);color:var(--tm);box-shadow:var(--sh);'}${!run||d?'opacity:.5;':''}">${s.e} ${s.t}${d?' ✓':''}</button>`}).join('')}</div>
-  ${sp.length?`<div class="c" style="padding:18px;margin-bottom:28px;text-align:left">${sp.map((x,i)=>{const prev=i===0?S.timerStart:sp[i-1].time;return`<div style="display:flex;justify-content:space-between;padding:8px 0;${i<sp.length-1?'border-bottom:1px solid var(--bl)':''}"><span style="font-size:14px;color:var(--tm);text-transform:capitalize">${x.label}</span><span style="font-size:14px;font-weight:600">${fmtT(x.time-prev)}</span></div>`}).join('')}</div>`:''}
+  <div style="display:flex;gap:8px;justify-content:center;margin:24px 0;flex-wrap:wrap;max-width:340px;margin-left:auto;margin-right:auto;">
+  ${[{l:'pw',e:'💅',t:'Prework'},{l:'bo',e:'🪮',t:'Brush'},{l:'bs',e:'🔌',t:'Shave'},{l:'sl',e:'✂️',t:'Legs/Feet'},{l:'hf',e:'🐶',t:'Head'},{l:'ta',e:'🐕',t:'Tail'},{l:'fi',e:'✨',t:'Finished'}].map(s=>{const d=done.includes(s.l);return`<button onclick="${run&&!d?`split('${s.l}')`:''}" style="padding:10px 14px;border-radius:12px;font-size:13px;font-weight:600;${d?'background:var(--ss);color:var(--sg);':'background:var(--card);border:1px solid var(--bd);color:var(--tm);box-shadow:var(--sh);'}${!run||d?'opacity:.5;':''}">${s.e} ${s.t}${d?' ✓':''}</button>`}).join('')}</div>
+  ${sp.length?`<div class="c" style="padding:18px;margin-bottom:28px;text-align:left">${sp.map((x,i)=>{const prev=i===0?S.timerStart:sp[i-1].time;return`<div style="display:flex;justify-content:space-between;padding:8px 0;${i<sp.length-1?'border-bottom:1px solid var(--bl)':''}"><span style="font-size:14px;color:var(--tm);text-transform:capitalize">${stMap[x.label]||x.label}</span><span style="font-size:14px;font-weight:600">${fmtT(x.time-prev)}</span></div>`}).join('')}</div>`:''}
   <div style="display:flex;gap:12px;justify-content:center;margin-top:auto;">
   <button onclick="stopTimer()" style="flex:2;padding:18px;background:var(--sg);border-radius:16px;color:var(--wh);font-size:17px;font-weight:600;box-shadow:0 6px 20px rgba(123,175,142,.3)">⏹ Done</button>
   <button onclick="cancelTimer()" style="flex:1;padding:18px;border:1px solid var(--bd);border-radius:16px;color:var(--mu);font-size:16px;font-weight:500;">Cancel</button></div></div>`}
 
 function timerBeforePhoto(){const f=document.getElementById('tPB').files[0];if(!f)return;compressPhoto(f,data=>{S.timerBeforePhoto=data;save();R();})}
-function rvDiff(d){_rvDf=d;document.querySelectorAll('#rvDf .diff-btn').forEach((b,i)=>{b.className='diff-btn';if(i+1===d)b.classList.add('on-'+d)})}
+function rvDiff(d){vib(); _rvDf=d;document.querySelectorAll('#rvDf .diff-btn').forEach((b,i)=>{b.className='diff-btn';if(i+1===d)b.classList.add('on-'+d)})}
 function rvPhoto(){const f=document.getElementById('rvPA').files[0];if(!f)return;compressPhoto(f,data=>{_rvAfter=data;R();})}
 
 // ════ LOG ════
 function renderLog(){return`<div style="padding-top:28px"><h2 style="font-size:26px;margin-bottom:6px">Groom Log</h2><p style="font-size:14px;color:var(--mu);margin-bottom:24px">All your tracked grooms.</p>
-${S.editId?renderEditForm():S.showForm?renderLogForm():`<button onclick="S.showForm=true;R()" style="width:100%;padding:20px;background:var(--rg);border:2px dashed rgba(212,132,154,.35);border-radius:var(--r);color:var(--rd);font-size:16px;font-weight:600;margin-bottom:20px">🐾 Log a Groom Manually</button>`}
+${S.editId?renderEditForm():S.showForm?renderLogForm():`<button onclick="vib();S.showForm=true;R()" style="width:100%;padding:20px;background:var(--rg);border:2px dashed rgba(212,132,154,.35);border-radius:var(--r);color:var(--rd);font-size:16px;font-weight:600;margin-bottom:20px">🐾 Log a Groom Manually</button>`}
 ${S.logs.length===0&&!S.showForm&&!S.editId?`<div style="text-align:center;padding:60px 20px"><div style="font-size:56px;margin-bottom:16px">✂️</div><div style="font-size:16px;color:var(--tm);font-weight:500">No grooms yet</div></div>`:`
 ${!S.showForm&&!S.editId&&S.logs.length>=3?`<div class="c" style="padding:20px 14px;margin-bottom:18px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--di);text-transform:uppercase;font-weight:600;margin-bottom:16px;margin-left:4px">Recent Trend</div>${renderChart(S.logs.slice(0,14).reverse())}</div>`:''}
 ${!S.showForm&&!S.editId?S.logs.map(l=>`<div class="c" style="padding:18px;margin-bottom:14px">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
 <div><span style="font-size:16px;font-weight:600">${esc(l.breed)}</span>${l.style?`<span style="font-size:13px;color:var(--mu);margin-left:8px">${esc(l.style)}</span>`:''}</div>
 <div style="display:flex;align-items:center;gap:8px">${l.diff===3?'🔴':l.diff===2?'🟡':'🟢'}${l.timed?'<span style="font-size:12px;color:var(--ro)">⏱</span>':''}<span style="font-family:Fraunces,serif;font-size:20px;font-weight:600;color:${tc(l.min)}">${l.min}m</span></div></div>
-<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${l.cl?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Clipper ${l.cl}m</span>`:''}${l.sc?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Scissor ${l.sc}m</span>`:''}${l.fi?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Finish ${l.fi}m</span>`:''}
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+${l.pw?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Pre ${l.pw}m</span>`:''}
+${l.bo?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Brush ${l.bo}m</span>`:''}
+${l.bs?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Shave ${l.bs}m</span>`:''}
+${l.sl?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Legs ${l.sl}m</span>`:''}
+${l.hf?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Head ${l.hf}m</span>`:''}
+${l.ta?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Tail ${l.ta}m</span>`:''}
+${l.fi?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Finish ${l.fi}m</span>`:''}
+${l.cl?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Clipper ${l.cl}m</span>`:''}
+${l.sc?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Scissor ${l.sc}m</span>`:''}
 <span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);text-transform:capitalize;font-weight:500;">${esc(l.size)}</span></div>
 ${(l.before||l.after)?`<div style="display:flex;gap:12px;margin-bottom:12px">${l.before?`<div><div style="font-size:10px;color:var(--di);margin-bottom:4px;font-weight:600;">BEFORE</div><img src="${l.before}" class="photo-thumb" style="width:72px;height:72px;"></div>`:''}${l.after?`<div><div style="font-size:10px;color:var(--di);margin-bottom:4px;font-weight:600;">AFTER</div><img src="${l.after}" class="photo-thumb" style="width:72px;height:72px;"></div>`:''}</div>`:''}
 ${l.notes?`<div style="font-size:13px;color:var(--di);margin-bottom:12px;font-style:italic">"${esc(l.notes)}"</div>`:''}
@@ -349,27 +418,51 @@ return`<div style="height:80px;display:flex;align-items:flex-end;gap:4px;padding
 let _sz='medium',_df=1,_phB=null,_phA=null;
 function renderLogForm(){return`<div class="c" style="border:1px solid rgba(212,132,154,.25);border-radius:18px;padding:22px;margin-bottom:18px;box-shadow:var(--su)">
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px"><span style="font-size:24px">🐾</span><h3 style="font-size:20px;color:var(--rd)">Log a Groom</h3></div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px"><div><label class="lbl">Breed *</label><input class="inp" id="fB" placeholder="e.g. Shih Tzu"></div><div><label class="lbl">Style</label><input class="inp" id="fSt" placeholder="e.g. Teddy bear"></div></div>
+<div style="margin-bottom:16px"><label class="lbl">Date</label><input type="date" class="inp" id="fDate" value="${dk()}"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px"><div><label class="lbl">Breed *</label><input class="inp" id="fB" placeholder="e.g. Shih Tzu" list="breedList"></div><div><label class="lbl">Style</label><input class="inp" id="fSt" placeholder="e.g. Teddy bear"></div></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px"><div><label class="lbl">Size</label><div style="display:flex;gap:6px" id="szB">${['small','medium','large'].map(s=>`<button class="pill ${_sz===s?'on':''}" style="flex:1;padding:12px 2px;" onclick="pSz('${s}')">${s}</button>`).join('')}</div></div>
 <div><label class="lbl">Difficulty</label><div style="display:flex;gap:6px" id="dfB"><button class="diff-btn ${_df===1?'on-1':''}" style="flex:1" onclick="pDf(1)">🟢</button><button class="diff-btn ${_df===2?'on-2':''}" style="flex:1" onclick="pDf(2)">🟡</button><button class="diff-btn ${_df===3?'on-3':''}" style="flex:1" onclick="pDf(3)">🔴</button></div></div></div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px"><div><label class="lbl">Total Time (min) *</label><input class="inp" id="fT" type="number" inputmode="numeric" placeholder="45"></div><div><label class="lbl">Clipper (min)</label><input class="inp" id="fC" type="number" inputmode="numeric"></div><div><label class="lbl">Scissor (min)</label><input class="inp" id="fSc" type="number" inputmode="numeric"></div><div><label class="lbl">Finish (min)</label><input class="inp" id="fF" type="number" inputmode="numeric"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+  <div><label class="lbl">Total Time (min) *</label><input class="inp" id="fT" type="number" inputmode="numeric" placeholder="45" style="border-color:var(--ro)"></div>
+  <div><label class="lbl">Prework (min)</label><input class="inp" id="fPw" type="number" inputmode="numeric"></div>
+  <div><label class="lbl">Brush Out (min)</label><input class="inp" id="fBo" type="number" inputmode="numeric"></div>
+  <div><label class="lbl">Body Shave (min)</label><input class="inp" id="fBs" type="number" inputmode="numeric"></div>
+  <div><label class="lbl">Legs & Feet (min)</label><input class="inp" id="fSl" type="number" inputmode="numeric"></div>
+  <div><label class="lbl">Head & Face (min)</label><input class="inp" id="fHf" type="number" inputmode="numeric"></div>
+  <div><label class="lbl">Tail (min)</label><input class="inp" id="fTa" type="number" inputmode="numeric"></div>
+  <div><label class="lbl">Finished (min)</label><input class="inp" id="fFi" type="number" inputmode="numeric"></div>
+</div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
   <div><label class="lbl">📸 Before</label><label class="file-btn">${_phB?'✅ Change':'📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="fPB" onchange="hPh('fPB','B')"></label><div id="pvB" style="margin-top:8px">${_phB?`<img src="${_phB}" class="photo-thumb">`:''}</div></div>
   <div><label class="lbl">📸 After</label><label class="file-btn">${_phA?'✅ Change':'📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="fPA" onchange="hPh('fPA','A')"></label><div id="pvA" style="margin-top:8px">${_phA?`<img src="${_phA}" class="photo-thumb">`:''}</div></div>
 </div>
 <div style="margin-bottom:20px"><label class="lbl">Notes</label><input class="inp" id="fN" placeholder="Optional notes"></div>
-<div style="display:flex;gap:12px"><button onclick="submitLog()" style="flex:2;padding:16px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(212,132,154,.35)">Save 🐾</button><button onclick="S.showForm=false;_phB=null;_phA=null;R()" style="flex:1;padding:16px;border:1px solid var(--bd);border-radius:14px;color:var(--mu);font-size:15px;font-weight:500;">Cancel</button></div></div>`}
+<div style="display:flex;gap:12px"><button onclick="submitLog()" style="flex:2;padding:16px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(212,132,154,.35)">Save 🐾</button><button onclick="vib();S.showForm=false;_phB=null;_phA=null;R()" style="flex:1;padding:16px;border:1px solid var(--bd);border-radius:14px;color:var(--mu);font-size:15px;font-weight:500;">Cancel</button></div></div>`}
 
-function pSz(s){_sz=s;R();}
-function pDf(d){_df=d;R();}
+function pSz(s){vib(); _sz=s;R();}
+function pDf(d){vib(); _df=d;R();}
 function hPh(iid,which){const f=document.getElementById(iid).files[0];if(!f)return;compressPhoto(f,data=>{if(which==='B')_phB=data;else _phA=data; R();})}
-function submitLog(){const b=document.getElementById('fB').value.trim(),t=Math.max(0,parseInt(document.getElementById('fT').value)||0);if(!b||!t){showAlert('Please enter a breed and a valid total time.');return}
-S.logs.unshift({id:Date.now(),ts:Date.now(),date:new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),breed:b,style:document.getElementById('fSt').value.trim(),size:_sz,min:t,cl:Math.max(0,parseInt(document.getElementById('fC').value)||0),sc:Math.max(0,parseInt(document.getElementById('fSc').value)||0),fi:Math.max(0,parseInt(document.getElementById('fF').value)||0),diff:_df,notes:document.getElementById('fN').value.trim(),timed:false,before:_phB,after:_phA});
-S.showForm=false;_sz='medium';_df=1;_phB=null;_phA=null;save();R()}
+function submitLog(){
+    vib();
+    const b=document.getElementById('fB').value.trim(),t=Math.max(0,parseInt(document.getElementById('fT').value)||0);
+    if(!b||!t){showAlert('Please enter a breed and a valid total time.');return}
+    
+    // Parse Date
+    const dStr = document.getElementById('fDate').value || dk();
+    const dObj = new Date(dStr + 'T12:00:00'); // ensure timezone safety
+    const displayDate = dObj.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+
+    S.logs.unshift({id:Date.now(),ts:dObj.getTime(),date:displayDate,breed:b,style:document.getElementById('fSt').value.trim(),size:_sz,min:t,pw:Math.max(0,parseInt(document.getElementById('fPw').value)||0),bo:Math.max(0,parseInt(document.getElementById('fBo').value)||0),bs:Math.max(0,parseInt(document.getElementById('fBs').value)||0),sl:Math.max(0,parseInt(document.getElementById('fSl').value)||0),hf:Math.max(0,parseInt(document.getElementById('fHf').value)||0),ta:Math.max(0,parseInt(document.getElementById('fTa').value)||0),fi:Math.max(0,parseInt(document.getElementById('fFi').value)||0),diff:_df,notes:document.getElementById('fN').value.trim(),timed:false,before:_phB,after:_phA});
+    // Sort to keep ordered by date
+    S.logs.sort((a,b) => b.ts - a.ts);
+    
+    S.showForm=false;_sz='medium';_df=1;_phB=null;_phA=null;save();R()
+}
 
 // ── Edit Log ──
 let _edSz='medium',_edDf=1,_edPhB=null,_edPhA=null;
 function editLog(id){
+    vib();
     S.editId=id;
     const l=S.logs.find(x=>x.id===id);
     if(!l)return;
@@ -379,33 +472,64 @@ function editLog(id){
 function renderEditForm(){
 const l = S.logs.find(x=>x.id===S.editId);
 if(!l) return '';
+
+// Generate YYYY-MM-DD for edit form
+const dObj = new Date(l.ts || Date.now());
+const isoDate = `${dObj.getFullYear()}-${String(dObj.getMonth()+1).padStart(2,'0')}-${String(dObj.getDate()).padStart(2,'0')}`;
+
 return`<div class="c" style="border:1px solid rgba(123,175,142,.4);border-radius:18px;padding:22px;margin-bottom:18px;box-shadow:var(--su)">
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px"><span style="font-size:24px">✏️</span><h3 style="font-size:20px;color:var(--sg)">Edit Groom</h3></div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px"><div><label class="lbl">Breed *</label><input class="inp" id="eB" value="${esc(l.breed||'')}"></div><div><label class="lbl">Style</label><input class="inp" id="eSt" value="${esc(l.style||'')}"></div></div>
+<div style="margin-bottom:16px"><label class="lbl">Date</label><input type="date" class="inp" id="eDate" value="${isoDate}"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px"><div><label class="lbl">Breed *</label><input class="inp" id="eB" value="${esc(l.breed||'')}" list="breedList"></div><div><label class="lbl">Style</label><input class="inp" id="eSt" value="${esc(l.style||'')}"></div></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px"><div><label class="lbl">Size</label><div style="display:flex;gap:6px" id="edSzB">${['small','medium','large'].map(s=>`<button class="pill ${_edSz===s?'on':''}" style="flex:1;padding:12px 2px;" onclick="eSz('${s}')">${s}</button>`).join('')}</div></div>
 <div><label class="lbl">Difficulty</label><div style="display:flex;gap:6px" id="edDfB"><button class="diff-btn ${_edDf===1?'on-1':''}" style="flex:1;" onclick="eDf(1)">🟢</button><button class="diff-btn ${_edDf===2?'on-2':''}" style="flex:1;" onclick="eDf(2)">🟡</button><button class="diff-btn ${_edDf===3?'on-3':''}" style="flex:1;" onclick="eDf(3)">🔴</button></div></div></div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px"><div><label class="lbl">Total (min) *</label><input class="inp" id="eT" type="number" inputmode="numeric" value="${l.min||''}"></div><div><label class="lbl">Clipper</label><input class="inp" id="eC" type="number" inputmode="numeric" value="${l.cl||''}"></div><div><label class="lbl">Scissor</label><input class="inp" id="eSc" type="number" inputmode="numeric" value="${l.sc||''}"></div><div><label class="lbl">Finish</label><input class="inp" id="eF" type="number" inputmode="numeric" value="${l.fi||''}"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+  <div><label class="lbl">Total (min) *</label><input class="inp" id="eT" type="number" inputmode="numeric" value="${l.min||''}" style="border-color:var(--sg)"></div>
+  <div><label class="lbl">Prework</label><input class="inp" id="ePw" type="number" inputmode="numeric" value="${l.pw||''}"></div>
+  <div><label class="lbl">Brush Out</label><input class="inp" id="eBo" type="number" inputmode="numeric" value="${l.bo||''}"></div>
+  <div><label class="lbl">Body Shave</label><input class="inp" id="eBs" type="number" inputmode="numeric" value="${l.bs||l.cl||''}"></div>
+  <div><label class="lbl">Legs & Feet</label><input class="inp" id="eSl" type="number" inputmode="numeric" value="${l.sl||l.sc||''}"></div>
+  <div><label class="lbl">Head & Face</label><input class="inp" id="eHf" type="number" inputmode="numeric" value="${l.hf||''}"></div>
+  <div><label class="lbl">Tail</label><input class="inp" id="eTa" type="number" inputmode="numeric" value="${l.ta||''}"></div>
+  <div><label class="lbl">Finished</label><input class="inp" id="eFi" type="number" inputmode="numeric" value="${l.fi||''}"></div>
+</div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
   <div><label class="lbl">📸 Before</label>${_edPhB?`<div style="margin-bottom:8px;position:relative;display:inline-block;"><img src="${_edPhB}" class="photo-thumb"><button onclick="_edPhB=null;R();" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>`:''}<label class="file-btn">${_edPhB?'Change Photo':'📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="ePB" onchange="ePhH('ePB','B')"></label></div>
   <div><label class="lbl">📸 After</label>${_edPhA?`<div style="margin-bottom:8px;position:relative;display:inline-block;"><img src="${_edPhA}" class="photo-thumb"><button onclick="_edPhA=null;R();" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>`:''}<label class="file-btn">${_edPhA?'Change Photo':'📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="ePA" onchange="ePhH('ePA','A')"></label></div>
 </div>
 <div style="margin-bottom:20px"><label class="lbl">Notes</label><input class="inp" id="eN" placeholder="Notes" value="${esc(l.notes||'')}"></div>
-<div style="display:flex;gap:12px"><button onclick="saveEdit()" style="flex:2;padding:16px;background:var(--sg);border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(123,175,142,.3)">Save Changes ✓</button><button onclick="S.editId=null;R()" style="flex:1;padding:16px;border:1px solid var(--bd);border-radius:14px;color:var(--mu);font-size:15px;font-weight:500;">Cancel</button></div></div>`}
+<div style="display:flex;gap:12px"><button onclick="saveEdit()" style="flex:2;padding:16px;background:var(--sg);border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(123,175,142,.3)">Save Changes ✓</button><button onclick="vib();S.editId=null;R()" style="flex:1;padding:16px;border:1px solid var(--bd);border-radius:14px;color:var(--mu);font-size:15px;font-weight:500;">Cancel</button></div></div>`}
 
-function eSz(s){_edSz=s;R();}
-function eDf(d){_edDf=d;R();}
+function eSz(s){vib();_edSz=s;R();}
+function eDf(d){vib();_edDf=d;R();}
 function ePhH(iid,which){const f=document.getElementById(iid).files[0];if(!f)return;compressPhoto(f,data=>{if(which==='B')_edPhB=data;else _edPhA=data; R();})}
-function saveEdit(){const l=S.logs.find(x=>x.id===S.editId);if(!l)return;const b=document.getElementById('eB').value.trim(),t=Math.max(0,parseInt(document.getElementById('eT').value)||0);if(!b||!t){showAlert('Breed and valid time required.');return}
-l.breed=b;l.style=document.getElementById('eSt').value.trim();l.size=_edSz;l.diff=_edDf;l.min=t;l.cl=Math.max(0,parseInt(document.getElementById('eC').value)||0);l.sc=Math.max(0,parseInt(document.getElementById('eSc').value)||0);l.fi=Math.max(0,parseInt(document.getElementById('eF').value)||0);l.notes=document.getElementById('eN').value.trim();l.before=_edPhB;l.after=_edPhA;
-S.editId=null;save();R()}
+function saveEdit(){
+    vib();
+    const l=S.logs.find(x=>x.id===S.editId);if(!l)return;
+    const b=document.getElementById('eB').value.trim(),t=Math.max(0,parseInt(document.getElementById('eT').value)||0);
+    if(!b||!t){showAlert('Breed and valid time required.');return}
+    
+    // Parse Date
+    const dStr = document.getElementById('eDate').value || dk();
+    const dObj = new Date(dStr + 'T12:00:00'); // ensure timezone safety
+    
+    l.ts = dObj.getTime();
+    l.date = dObj.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    l.breed=b;l.style=document.getElementById('eSt').value.trim();l.size=_edSz;l.diff=_edDf;l.min=t;
+    l.pw=Math.max(0,parseInt(document.getElementById('ePw').value)||0);l.bo=Math.max(0,parseInt(document.getElementById('eBo').value)||0);l.bs=Math.max(0,parseInt(document.getElementById('eBs').value)||0);l.sl=Math.max(0,parseInt(document.getElementById('eSl').value)||0);l.hf=Math.max(0,parseInt(document.getElementById('eHf').value)||0);l.ta=Math.max(0,parseInt(document.getElementById('eTa').value)||0);l.fi=Math.max(0,parseInt(document.getElementById('eFi').value)||0);
+    l.notes=document.getElementById('eN').value.trim();l.before=_edPhB;l.after=_edPhA;
+    
+    S.logs.sort((a,b) => b.ts - a.ts);
+    S.editId=null;save();R()
+}
 function delLog(id){showConfirm('Delete this groom record permanently?', () => {S.logs=S.logs.filter(l=>l.id!==id);save();R();})}
 
 // ════ TOOLS ════
 function renderTools(){const sub=S.sub||'blades';
 return`<div style="padding-top:28px"><h2 style="font-size:26px;margin-bottom:18px">Tools</h2>
-<div style="display:flex;gap:6px;margin-bottom:20px;background:var(--ca);padding:6px;border-radius:14px">
-${[{k:'blades',l:'🔧 Blades'},{k:'breeds',l:'🐕 Breeds'},{k:'goals',l:'🎯 Goals'}].map(t=>`<button class="sub-tab ${sub===t.k?'on':''}" style="flex:1;padding:12px 6px;text-align:center;" onclick="S.sub='${t.k}';S.showBreedForm=false;S.editBreedKey=null;R()">${t.l}</button>`).join('')}</div>
-${sub==='blades'?renderBlades():sub==='breeds'?renderBreeds():renderGoals()}</div>`}
+<div style="display:flex;gap:6px;margin-bottom:20px;background:var(--ca);padding:6px;border-radius:14px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;">
+${[{k:'blades',l:'🔧 Blades'},{k:'breeds',l:'🐕 Breeds'},{k:'standards',l:'⏱️ Standards'},{k:'goals',l:'🎯 Goals'}].map(t=>`<button class="sub-tab ${sub===t.k?'on':''}" style="flex:1;padding:12px 14px;text-align:center;min-width:90px;" onclick="vib();S.sub='${t.k}';S.showBreedForm=false;S.editBreedKey=null;S.showStdForm=false;S.editStdId=null;R()">${t.l}</button>`).join('')}</div>
+${sub==='blades'?renderBlades():sub==='breeds'?renderBreeds():sub==='standards'?renderStandards():renderGoals()}</div>`}
 
 function renderBlades(){return`
 <div class="c" style="padding:20px;margin-bottom:16px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--rd);text-transform:uppercase;font-weight:600;margin-bottom:6px">Clipper Blades</div><div style="font-size:12px;color:var(--mu);margin-bottom:14px">Higher number = shorter cut</div>
@@ -416,13 +540,89 @@ ${BLADES.map((b,i)=>`<tr style="border-bottom:1px solid var(--bl);${i%2?'backgro
 ${GUARDS.map((g,i)=>`<tr style="border-bottom:1px solid var(--bl);${i%2?'background:var(--ca)':''}"><td style="padding:10px 4px;font-weight:600;color:var(--hn)">${g.n}</td><td style="padding:10px 4px">${g.len}</td><td style="padding:10px 4px;color:var(--di)">${g.mm}mm</td></tr>`).join('')}</table></div>
 <div class="c" style="padding:20px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--sg);text-transform:uppercase;font-weight:600;margin-bottom:10px">💡 Quick Tips</div><div style="font-size:13px;color:var(--tm);line-height:1.6"><p style="margin-bottom:8px">• <strong>#10</strong> — workhorse: sanitary, pads, poodle faces, base for combs.</p><p style="margin-bottom:8px">• <strong>#7F</strong> — most popular body blade, smooth finish.</p><p style="margin-bottom:8px">• <strong>F = Finish</strong> (smooth). Skip-tooth = rough/bulk removal.</p><p style="margin-bottom:8px">• <strong>With the grain</strong> leaves one blade length longer.</p><p>• Blades hot? Swap to a cool backup on a ceramic tile.</p></div></div>`}
 
-// ── Breed Notes (INLINE FORMS — no prompts) ──
+// ── Standards (Pace Guide) ──
+function renderStandards(){
+    const stds = S.standards || [];
+    const showForm = S.showStdForm;
+    const editId = S.editStdId;
+    
+    return`<div class="c" style="padding:20px;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div style="font-size:11px;letter-spacing:1.5px;color:var(--co);text-transform:uppercase;font-weight:600">⏱️ Salon Standards</div>
+    ${!showForm&&!editId?`<button onclick="vib();S.showStdForm=true;R()" style="padding:8px 16px;background:var(--cs);border:1px solid var(--co);border-radius:10px;color:var(--co);font-size:13px;font-weight:600">+ Add Standard</button>`:''}</div>
+    
+    ${showForm?renderStdForm(null):''}
+    ${stds.length===0&&!showForm?`<div style="text-align:center;padding:30px 20px;color:var(--di);font-size:14px">No pace standards set.</div>`:''}
+    ${stds.map(s=>{
+        if(editId===s.id) return renderStdForm(s.id);
+        const textLines = (s.text||'').split('\n').filter(Boolean);
+        return`<div style="padding:16px 0;border-bottom:1px solid var(--bl)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:16px;font-weight:600;color:var(--tx)">${esc(s.title)}</span>
+        <div><button onclick="vib();S.editStdId='${s.id}';R()" style="font-size:13px;color:var(--ro);margin-right:12px;font-weight:600;">Edit</button><button onclick="delStd('${s.id}')" style="font-size:16px;color:var(--di);font-weight:bold;">×</button></div></div>
+        
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <span style="background:var(--rg);border:1px solid var(--ro);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--rd);font-weight:600;">Aim: ${s.aim}m</span>
+            <span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Max: ${s.max}m</span>
+        </div>
+        
+        <div style="font-size:13px;color:var(--mu);line-height:1.6;background:var(--bg);padding:12px;border-radius:10px;border:1px solid var(--bl);">
+            ${textLines.map(line => `<div style="margin-bottom:6px;">${esc(line)}</div>`).join('')}
+        </div>
+        </div>`
+    }).join('')}</div>`;
+}
+
+function renderStdForm(existingId){
+    const isEdit=!!existingId;
+    const s = isEdit ? S.standards.find(x=>x.id===existingId) : {title:'',aim:'',max:'',text:''};
+    return`<div style="padding:18px;background:var(--ca);border-radius:14px;margin-bottom:16px;border:1px solid ${isEdit?'var(--co)':'var(--sg)'}40">
+    <div style="font-size:13px;font-weight:600;color:${isEdit?'var(--co)':'var(--sg)'};margin-bottom:14px">${isEdit?'✏️ Edit Standard':'⏱️ New Pace Standard'}</div>
+    
+    <div style="margin-bottom:14px"><label class="lbl">Title (e.g. Small/Med 3 Blade)</label><input class="inp" id="stdTitle" value="${esc(s.title)}"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div><label class="lbl">Aim Time (min)</label><input class="inp" id="stdAim" type="number" value="${s.aim||''}"></div>
+      <div><label class="lbl">Max Time (min)</label><input class="inp" id="stdMax" type="number" value="${s.max||''}"></div>
+    </div>
+    <div style="margin-bottom:16px"><label class="lbl">Step Breakdown</label>
+      <div style="font-size:11px;color:var(--mu);margin-bottom:6px;">Put each step on a new line.</div>
+      <textarea class="inp" id="stdText" rows="6" placeholder="1. Pre work (nails, pads, sani) - 5-8 min\n2. Brush out - 10 min">${esc(s.text)}</textarea>
+    </div>
+    
+    <div style="display:flex;gap:12px">
+      <button onclick="saveStd(${isEdit?`'${s.id}'`:'null'})" style="flex:2;padding:14px;background:${isEdit?'var(--co)':'var(--sg)'};border-radius:12px;color:var(--wh);font-size:14px;font-weight:600">${isEdit?'Save Changes':'Add Standard'}</button>
+      <button onclick="vib();S.showStdForm=false;S.editStdId=null;R()" style="flex:1;padding:14px 16px;border:1px solid var(--bd);border-radius:12px;color:var(--mu);font-size:14px;font-weight:500;">Cancel</button>
+    </div></div>`
+}
+
+function saveStd(id) {
+    vib();
+    const title = document.getElementById('stdTitle').value.trim();
+    if(!title) { showAlert("Title is required."); return; }
+    
+    const aim = parseInt(document.getElementById('stdAim').value) || 0;
+    const max = parseInt(document.getElementById('stdMax').value) || 0;
+    const text = document.getElementById('stdText').value.trim();
+    
+    if(id) {
+        const s = S.standards.find(x=>x.id===id);
+        if(s) { s.title=title; s.aim=aim; s.max=max; s.text=text; }
+    } else {
+        S.standards.push({id:'std_'+Date.now(), title, aim, max, text});
+    }
+    
+    S.showStdForm=false;S.editStdId=null;save();R();
+}
+
+function delStd(id){showConfirm('Delete this standard?', () => { S.standards = S.standards.filter(s=>s.id!==id); save(); R(); })}
+
+// ── Breed Notes (INLINE FORMS) ──
 function renderBreeds(){const breeds=Object.keys(S.breedNotes).sort();
 const showForm=S.showBreedForm,editKey=S.editBreedKey;
 return`<div class="c" style="padding:20px;margin-bottom:16px">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
 <div style="font-size:11px;letter-spacing:1.5px;color:var(--lv);text-transform:uppercase;font-weight:600">📒 Your Breed Notes</div>
-${!showForm&&!editKey?`<button onclick="S.showBreedForm=true;R()" style="padding:8px 16px;background:var(--rg);border:1px solid var(--ro);border-radius:10px;color:var(--rd);font-size:13px;font-weight:600">+ Add Breed</button>`:''}</div>
+${!showForm&&!editKey?`<button onclick="vib();S.showBreedForm=true;R()" style="padding:8px 16px;background:var(--rg);border:1px solid var(--ro);border-radius:10px;color:var(--rd);font-size:13px;font-weight:600">+ Add Breed</button>`:''}</div>
 
 ${showForm?renderBreedForm(null):''}
 ${breeds.length===0&&!showForm?`<div style="text-align:center;padding:30px 20px;color:var(--di);font-size:14px">No breed notes yet. Tap "+ Add Breed" to start.</div>`:''}
@@ -431,7 +631,7 @@ if(editKey===b) return renderBreedForm(b);
 return`<div style="padding:14px 0;border-bottom:1px solid var(--bl)">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
 <span style="font-size:16px;font-weight:600;text-transform:capitalize;color:var(--tx)">${esc(b)}</span>
-<div><button onclick="S.editBreedKey='${esc(b)}';R()" style="font-size:13px;color:var(--ro);margin-right:12px;font-weight:600;">Edit</button><button onclick="delBreed('${esc(b)}')" style="font-size:16px;color:var(--di);font-weight:bold;">×</button></div></div>
+<div><button onclick="vib();S.editBreedKey='${esc(b)}';R()" style="font-size:13px;color:var(--ro);margin-right:12px;font-weight:600;">Edit</button><button onclick="delBreed('${esc(b)}')" style="font-size:16px;color:var(--di);font-weight:bold;">×</button></div></div>
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
 ${n.blade?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Blade: ${esc(n.blade)}</span>`:''}
 ${n.comb?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Comb: ${esc(n.comb)}</span>`:''}
@@ -442,7 +642,7 @@ function renderBreedForm(existingKey){
   const isEdit=!!existingKey;const n=isEdit?S.breedNotes[existingKey]:{blade:'',comb:'',targetMin:0,notes:''};
   return`<div style="padding:18px;background:var(--ca);border-radius:14px;margin-bottom:16px;border:1px solid ${isEdit?'var(--lv)':'var(--ro)'}40">
   <div style="font-size:13px;font-weight:600;color:${isEdit?'var(--lv)':'var(--rd)'};margin-bottom:14px">${isEdit?'✏️ Edit '+existingKey:'🐕 New Breed'}</div>
-  ${!isEdit?`<div style="margin-bottom:14px"><label class="lbl">Breed Name *</label><input class="inp" id="bnName" placeholder="e.g. Shih Tzu"></div>`:''}
+  ${!isEdit?`<div style="margin-bottom:14px"><label class="lbl">Breed Name *</label><input class="inp" id="bnName" placeholder="e.g. Shih Tzu" list="breedList"></div>`:''}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
     <div><label class="lbl">Blade</label><input class="inp" id="bnBlade" placeholder="e.g. #7F" value="${esc(n.blade)}"></div>
     <div><label class="lbl">Guard Comb</label><input class="inp" id="bnComb" placeholder="e.g. #1" value="${esc(n.comb)}"></div></div>
@@ -450,9 +650,10 @@ function renderBreedForm(existingKey){
   <div style="margin-bottom:16px"><label class="lbl">Style Notes / Tips</label><input class="inp" id="bnNotes" placeholder="e.g. Round head, fuller legs" value="${esc(n.notes)}"></div>
   <div style="display:flex;gap:12px">
     <button onclick="saveBreedNote(${isEdit?`'${esc(existingKey)}'`:'null'})" style="flex:2;padding:14px;background:${isEdit?'var(--lv)':'var(--ro)'};border-radius:12px;color:var(--wh);font-size:14px;font-weight:600">${isEdit?'Save Changes':'Add Breed'}</button>
-    <button onclick="S.showBreedForm=false;S.editBreedKey=null;R()" style="flex:1;padding:14px 16px;border:1px solid var(--bd);border-radius:12px;color:var(--mu);font-size:14px;font-weight:500;">Cancel</button></div></div>`}
+    <button onclick="vib();S.showBreedForm=false;S.editBreedKey=null;R()" style="flex:1;padding:14px 16px;border:1px solid var(--bd);border-radius:12px;color:var(--mu);font-size:14px;font-weight:500;">Cancel</button></div></div>`}
 
 function saveBreedNote(existingKey){
+  vib();
   let key=existingKey;
   if(!key){const nameEl=document.getElementById('bnName');if(!nameEl||!nameEl.value.trim()){showAlert('Please enter a breed name');return}key=nameEl.value.trim().toLowerCase()}
   S.breedNotes[key]={blade:document.getElementById('bnBlade').value.trim(),comb:document.getElementById('bnComb').value.trim(),targetMin:parseInt(document.getElementById('bnTarget').value)||0,notes:document.getElementById('bnNotes').value.trim()};
@@ -469,18 +670,18 @@ function renderGoals(){const a = getAvg(); return`<div class="c" style="padding:
 <p>Total logged: <strong style="color:var(--tx)">${S.logs.length}</strong></p>
 ${S.goals.avgTarget&&a?`<p style="margin-top:10px;font-weight:600;font-size:13px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.05);color:${a<=S.goals.avgTarget?'var(--sg)':'var(--hn)'}">You are ${a<=S.goals.avgTarget?'meeting your time goal! 🎉':Math.abs(a-S.goals.avgTarget)+'m away from goal.'}</p>`:''}</div></div></div>`}
 
-// ════ ME ════
+// ════ ME (Profile & Export/Import) ════
 function renderMe(){const sub=S.sub2||'achievements';
 return`<div style="padding-top:28px"><h2 style="font-size:26px;margin-bottom:18px">Profile</h2>
 <div style="display:flex;gap:6px;margin-bottom:20px;background:var(--ca);padding:6px;border-radius:14px">
-${[{k:'achievements',l:'🏆 Milestones'},{k:'checklist',l:'✅ Prep'},{k:'stats',l:'📊 Stats'}].map(t=>`<button class="sub-tab ${sub===t.k?'on':''}" style="flex:1;padding:12px 6px;text-align:center;" onclick="S.sub2='${t.k}';R()">${t.l}</button>`).join('')}</div>
+${[{k:'achievements',l:'🏆 Milestones'},{k:'checklist',l:'✅ Prep'},{k:'stats',l:'📊 Stats'}].map(t=>`<button class="sub-tab ${sub===t.k?'on':''}" style="flex:1;padding:12px 6px;text-align:center;" onclick="vib();S.sub2='${t.k}';R()">${t.l}</button>`).join('')}</div>
 ${sub==='achievements'?renderAch():sub==='checklist'?renderChecklist():renderStats()}</div>`}
 
 function renderAch(){return`<div class="c" style="padding:20px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--lv);text-transform:uppercase;font-weight:600;margin-bottom:16px">🎖️ Milestones · ${ACH.filter(a=>a.ck(S)).length}/${ACH.length}</div>
 ${ACH.map(a=>{const e=a.ck(S);return`<div style="display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--bl)"><span style="font-size:26px;${e?'':'filter:grayscale(1);opacity:.3'}">${a.e}</span><div style="flex:1"><div style="font-size:14px;font-weight:600;color:${e?'var(--tx)':'var(--di)'};margin-bottom:2px;">${a.t}</div><div style="font-size:12px;color:var(--mu)">${a.d}</div></div>${e?'<span style="color:var(--sg);font-size:18px;font-weight:bold;">✓</span>':'<span style="color:var(--di);font-size:14px">🔒</span>'}</div>`}).join('')}</div>`}
 
 function renderChecklist(){const d=dk();return`<div class="c" style="padding:20px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--sg);text-transform:uppercase;font-weight:600;margin-bottom:18px">✅ Station Prep — ${new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}</div>
-${CHK.map(item=>{const k=d+'_'+item.id,on=!!S.chk[k];return`<div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--bl)"><button class="chk ${on?'on':''}" onclick="S.chk['${k}']=!S.chk['${k}'];save();R()">${on?'✓':''}</button><span style="font-size:15px;color:${on?'var(--di)':'var(--tx)'};${on?'text-decoration:line-through':''}">${item.t}</span></div>`}).join('')}</div>`}
+${CHK.map(item=>{const k=d+'_'+item.id,on=!!S.chk[k];return`<div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--bl)"><button class="chk ${on?'on':''}" onclick="vib();S.chk['${k}']=!S.chk['${k}'];save();R()">${on?'✓':''}</button><span style="font-size:15px;color:${on?'var(--di)':'var(--tx)'};${on?'text-decoration:line-through':''}">${item.t}</span></div>`}).join('')}</div>`}
 
 function renderStats(){const p=pbs();const a=getAvg();return`
 ${p.length?`<div class="c" style="padding:20px;margin-bottom:16px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--hn);text-transform:uppercase;font-weight:600;margin-bottom:14px">🏆 Personal Bests</div>${p.map((l,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;${i<p.length-1?'border-bottom:1px solid var(--bl)':''}"><span style="font-size:15px;font-weight:500;text-transform:capitalize;color:var(--tx)">${esc(l.breed)}</span><span style="font-family:Fraunces,serif;font-size:18px;font-weight:600;color:${tc(l.min)}">${l.min}m</span></div>`).join('')}</div>`:''}
@@ -493,7 +694,52 @@ ${p.length?`<div class="c" style="padding:20px;margin-bottom:16px"><div style="f
   <span>🟡 ${S.logs.filter(l=>l.diff===2).length} Mod</span>
   <span>🔴 ${S.logs.filter(l=>l.diff===3).length} Hard</span>
 </div></div></div>
-<div style="text-align:center;padding:20px 20px 40px;"><button onclick="showConfirm('Reset ALL data? This cannot be undone.', () => {localStorage.removeItem(SK);location.reload();})" style="font-size:13px;color:var(--di);text-decoration:underline;padding:10px;">Reset All App Data</button></div>`}
+
+<div class="c" style="padding:20px;margin-bottom:20px">
+  <div style="font-size:11px;letter-spacing:1.5px;color:var(--di);text-transform:uppercase;font-weight:600;margin-bottom:14px">💾 Data & Backup</div>
+  <div style="display:flex;gap:10px;margin-bottom:10px;">
+    <button onclick="exportData()" style="flex:1;padding:12px;background:var(--ca);border-radius:10px;color:var(--tx);font-size:13px;font-weight:600;border:1px solid var(--bd);">⬇️ Backup Data</button>
+    <label style="flex:1;padding:12px;background:var(--ca);border-radius:10px;color:var(--tx);font-size:13px;font-weight:600;border:1px solid var(--bd);text-align:center;cursor:pointer;">
+      ⬆️ Restore Data
+      <input type="file" accept=".json" style="display:none;" onchange="importData(event)">
+    </label>
+  </div>
+  <p style="font-size:11px;color:var(--mu);line-height:1.4;">Backup your data to a file on your device. Use restore if you get a new phone or accidentally clear your browser data.</p>
+</div>
+
+<div style="text-align:center;padding:10px 20px 40px;"><button onclick="showConfirm('Reset ALL data? This cannot be undone.', () => {localStorage.removeItem(SK);location.reload();})" style="font-size:13px;color:var(--di);text-decoration:underline;padding:10px;">Reset All App Data</button></div>`}
+
+// Data Import/Export functions
+function exportData(){
+    vib();
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(S));
+    const dlNode = document.createElement('a');
+    dlNode.setAttribute("href", dataStr);
+    dlNode.setAttribute("download", "GroomPace_Backup_" + dk() + ".json");
+    document.body.appendChild(dlNode);
+    dlNode.click();
+    dlNode.remove();
+}
+
+function importData(e){
+    vib();
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        try {
+            const obj = JSON.parse(event.target.result);
+            if(obj && obj.logs) { // basic validation check
+                Object.assign(S, obj);
+                save();
+                showAlert("Data successfully restored! 🐾");
+            } else { throw new Error("Invalid format"); }
+        } catch(err) {
+            showAlert("Error importing file. Invalid format.");
+        }
+    };
+    reader.readAsText(file);
+}
 
 // ── Init ──
 load();R();
