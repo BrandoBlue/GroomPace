@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="GroomPace">
+<meta name="theme-color" content="#FBF7F2">
+<title>GroomPace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..700&family=Fraunces:opsz,wght@9..144,400..700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#FBF7F2;--card:#FFF;--ca:#F6F0E8;--bd:#EDE4D9;--bl:#F5EDE4;--ro:#D4849A;--rd:#B8667E;--rs:#F3D4DE;--rg:rgba(212,132,154,.08);--sg:#7BAF8E;--ss:rgba(123,175,142,.1);--hn:#D4A85C;--hs:rgba(212,168,92,.1);--lv:#9B8DC4;--ls:rgba(155,141,196,.1);--co:#D98B7B;--cs:rgba(217,139,123,.1);--tx:#2E2627;--tm:#5E4D50;--mu:#8E7C7F;--di:#BCA8AB;--wh:#FFF;--sh:0 2px 16px rgba(46,38,39,.06);--su:0 6px 24px rgba(46,38,39,.1);--r:16px}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg);color:var(--tx);font-family:'DM Sans',-apple-system,sans-serif;-webkit-font-smoothing:antialiased;min-height:100dvh;overscroll-behavior:none}
+button{font-family:inherit;cursor:pointer;border:none;background:none;outline:none;}
+input,textarea,select{-webkit-appearance:none;appearance:none;font-family:inherit;outline:none}
+h1,h2,h3{font-family:'Fraunces',serif;font-weight:600}
+.app{max-width:430px;margin:0 auto;padding-bottom:calc(92px + env(safe-area-inset-bottom, 0px));min-height:100dvh;position:relative;}
+.pad{padding:0 18px}
+.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:rgba(251,247,242,.94);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-top:1px solid var(--bd);display:flex;padding-bottom:calc(env(safe-area-inset-bottom, 8px) + 4px);z-index:100}
+.nav button{flex:1;display:flex;flex-direction:column;align-items:center;padding:12px 4px 8px;color:var(--di);transition:color .2s}
+.nav button.on{color:var(--rd)}
+.nav .ni{font-size:22px;margin-bottom:2px}.nav .nl{font-size:10px;letter-spacing:.3px}.nav button.on .nl{font-weight:600}
+@keyframes fi{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}.fi{animation:fi .35s ease-out forwards}
+.c{background:var(--card);border-radius:var(--r);box-shadow:var(--sh)}
+.inp{width:100%;padding:14px;background:var(--bg);border:1px solid var(--bd);border-radius:12px;color:var(--tx);font-size:15px;transition:border-color .2s}.inp:focus{border-color:var(--ro)}
+textarea.inp{resize:vertical;min-height:60px}
+.lbl{font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:6px;display:block;font-weight:600}
+.pill{padding:10px 14px;border:1px solid var(--bd);border-radius:12px;font-size:13px;color:var(--mu);transition:all .2s;text-align:center;}
+.pill.on{background:var(--rg);border-color:var(--ro);color:var(--rd);font-weight:600}
+.file-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:14px;background:var(--card);border:1px dashed var(--di);border-radius:12px;color:var(--mu);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;}
+.file-btn:active{opacity:0.6;background:var(--bg);}
+.file-btn input[type="file"]{display:none;}
+.timer-num{font-family:'Fraunces',serif;font-size:64px;font-weight:600;letter-spacing:-1px;line-height:1;font-variant-numeric:tabular-nums;transition:color 0.3s;}.timer-num.run{color:var(--rd)}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:20px;font-size:11px;font-weight:600}.badge.y{background:var(--hs);color:#A07830}.badge.n{background:var(--ca);color:var(--di)}
+.chk{width:24px;height:24px;min-width:24px;border-radius:8px;border:2px solid var(--bd);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--wh);transition:all .2s}.chk.on{background:var(--sg);border-color:var(--sg);box-shadow:0 2px 6px rgba(123,175,142,.3)}
+.diff-btn{padding:10px 14px;border-radius:12px;font-size:14px;border:1px solid var(--bd);transition:all .2s;display:flex;align-items:center;justify-content:center;gap:4px;}
+.diff-btn.on-1{background:var(--ss);border-color:var(--sg);color:var(--sg);font-weight:600}
+.diff-btn.on-2{background:var(--hs);border-color:var(--hn);color:#8B6D20;font-weight:600}
+.diff-btn.on-3{background:var(--cs);border-color:var(--co);color:#A04030;font-weight:600}
+.photo-thumb{width:64px;height:64px;border-radius:12px;object-fit:cover;border:2px solid var(--bl);box-shadow:var(--sh);}
+.sub-tab{padding:10px 16px;border-radius:10px;font-size:13px;color:var(--mu);font-weight:500;transition:all .2s}.sub-tab.on{background:var(--card);color:var(--rd);font-weight:600;box-shadow:var(--sh)}
+::-webkit-scrollbar{width:0;display:none;}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+    <div class="pad" id="ct"></div>
+    <div class="nav" id="nv"></div>
+    <div id="modalRoot"></div>
+</div>
+<script>
+const SK='groompace-v3';
+
+// ── Data ──
+const BLADES=[
+{n:'#50',len:'1/125"',mm:'0.2',area:'Veterinary / surgical only'},
+{n:'#40',len:'1/100"',mm:'0.25',area:'Base blade for guard combs'},
+{n:'#30',len:'1/50"',mm:'0.5',area:'Base for guard combs, close work'},
+{n:'#15',len:'3/64"',mm:'1.2',area:'Paw pads, ears, inner sanitary'},
+{n:'#10',len:'1/16"',mm:'1.5',area:'Sanitary, pads, poodle faces, under combs'},
+{n:'#9',len:'5/64"',mm:'2',area:'Body, between #10 and #7'},
+{n:'#8½',len:'7/64"',mm:'2.8',area:'Body work on medium breeds'},
+{n:'#7F',len:'1/8"',mm:'3.2',area:'Body on most breeds — smooth finish'},
+{n:'#7',len:'1/8"',mm:'3.2',area:'Pre-bath rough cut, thick/matted coats'},
+{n:'#5F',len:'1/4"',mm:'6.3',area:'Fuller body look, summer trims'},
+{n:'#5',len:'1/4"',mm:'6.3',area:'Pre-bath on dense coats'},
+{n:'#4F',len:'3/8"',mm:'9.5',area:'Natural look, terrier bodies'},
+{n:'#4',len:'3/8"',mm:'9.5',area:'Thick coats needing length'},
+{n:'#3F',len:'1/2"',mm:'13',area:'Puppy trims, longest blade cut'},
+{n:'#3¾',len:'1/2"',mm:'13',area:'Rough cut before finishing'},
+];
+const GUARDS=[
+{n:'#0 (A)',len:'5/16"',mm:'8'},{n:'#½ (B)',len:'1/2"',mm:'13'},
+{n:'#1 (C)',len:'5/8"',mm:'16'},{n:'#1½ (D)',len:'3/4"',mm:'19'},
+{n:'#2 (E)',len:'1"',mm:'25'},{n:'#3',len:'1¼"',mm:'32'},
+{n:'#4',len:'1½"',mm:'38'},{n:'#5',len:'2"',mm:'50'},
+];
+const ACH=[
+{id:'first',e:'🐾',t:'First Groom',d:'Log your first groom',ck:s=>s.logs.length>=1},
+{id:'five',e:'✋',t:'High Five',d:'Log 5 grooms',ck:s=>s.logs.length>=5},
+{id:'ten',e:'🔟',t:'Double Digits',d:'Log 10 grooms',ck:s=>s.logs.length>=10},
+{id:'25',e:'⭐',t:'Quarter Century',d:'Log 25 grooms',ck:s=>s.logs.length>=25},
+{id:'50',e:'🏆',t:'Fifty & Fabulous',d:'Log 50 grooms',ck:s=>s.logs.length>=50},
+{id:'100',e:'💯',t:'Century Club',d:'Log 100 grooms',ck:s=>s.logs.length>=100},
+{id:'s30',e:'⚡',t:'Speed Demon',d:'Under 30 min groom',ck:s=>s.logs.some(l=>l.min<=30)},
+{id:'s20',e:'🔥',t:'Blazing Fast',d:'Under 20 min groom',ck:s=>s.logs.some(l=>l.min<=20)},
+{id:'t5',e:'⏱️',t:'Timer Pro',d:'Use live timer 5 times',ck:s=>s.logs.filter(l=>l.timed).length>=5},
+{id:'b5',e:'🐕',t:'Breed Master',d:'Groom 5 different breeds',ck:s=>new Set(s.logs.map(l=>l.breed.toLowerCase())).size>=5},
+{id:'b10',e:'🌟',t:'Breed Expert',d:'Groom 10 different breeds',ck:s=>new Set(s.logs.map(l=>l.breed.toLowerCase())).size>=10},
+{id:'ph',e:'📸',t:'Shutterbug',d:'Photos on 5 grooms',ck:s=>s.logs.filter(l=>(l.before||l.after)).length>=5},
+{id:'str',e:'📈',t:'Trending Up',d:'3 consecutive faster grooms',ck:s=>{if(s.logs.length<3)return false;return s.logs[0].min<s.logs[1].min&&s.logs[1].min<s.logs[2].min}},
+{id:'notes',e:'📒',t:'Note Taker',d:'Notes for 3 breeds',ck:s=>Object.keys(s.breedNotes||{}).length>=3},
+];
+const CHK=[
+{id:'c1',t:'Station clean & organized'},{id:'c2',t:'All blades sharp & ready'},
+{id:'c3',t:'Shears cleaned & oiled'},{id:'c4',t:'Guard combs laid out'},
+{id:'c5',t:'Products stocked'},{id:'c6',t:"Today's dogs reviewed"},
+{id:'c7',t:'Timer/clock visible'},{id:'c8',t:'Phone put away'},
+];
+
+// ── State ──
+let S={tab:'home',sub:'blades',sub2:'achievements',logs:[],chk:{},breedNotes:{},goals:{dogsPerDay:0,avgTarget:0},
+timerStart:null,timerRunning:false,timerSplits:[],timerBreed:'',timerStyle:'',timerSize:'medium',timerBeforePhoto:null,
+timerReview:null, 
+showForm:false,editId:null, 
+showBreedForm:false,editBreedKey:null, 
+onboarded:false};
+let TI=null;
+
+// Modal State
+let _modal = null;
+
+function load(){try{const d=JSON.parse(localStorage.getItem(SK));if(d){Object.assign(S,d);S.timerRunning=false;S.timerReview=S.timerReview||null;if(!S.breedNotes)S.breedNotes={};if(!S.goals)S.goals={dogsPerDay:0,avgTarget:0}}}catch(e){}}
+function save(){try{const o={...S};localStorage.setItem(SK,JSON.stringify(o))}catch(e){}}
+
+// ── Helpers ──
+function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function tc(m){return m<=25?'var(--sg)':m<=40?'var(--hn)':'var(--rd)'}
+function dk(){return new Date().toISOString().slice(0,10)}
+function fmtT(ms){const s=Math.floor(ms/1000),m=Math.floor(s/60);return String(m).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
+function fmtM(ms){return Math.round(ms/60000)}
+function elapsed(){return S.timerStart?Date.now()-S.timerStart:0}
+function getAvg(){return S.logs.length?Math.round(S.logs.reduce((a,l)=>a+l.min,0)/S.logs.length):null}
+function trend(){if(S.logs.length<6)return null;const r=Math.round(S.logs.slice(0,3).reduce((a,l)=>a+l.min,0)/3),o=Math.round(S.logs.slice(3,6).reduce((a,l)=>a+l.min,0)/3);return o-r}
+function pbs(){const m={};S.logs.forEach(l=>{const k=l.breed.toLowerCase();if(!m[k]||l.min<m[k].min)m[k]=l});return Object.values(m).sort((a,b)=>a.min-b.min).slice(0,8)}
+function weekLogs(){const now=Date.now(),wk=7*864e5;return S.logs.filter(l=>l.ts&&(now-l.ts)<wk)}
+function quote(){const q=["Every dog you finish faster proves you're growing.","Speed comes from confidence — you're building both.","It's not rushing. It's eliminating waste.","The best groomers work smarter, not harder.","Your hands know what to do. Trust the system.","Consistency creates speed. Do the reps.","Quality got you here. Systems take you further."];return q[Math.floor(Date.now()/864e5)%q.length]}
+function compressPhoto(file,cb){const r=new FileReader();r.onload=function(e){const img=new Image();img.onload=function(){const c=document.createElement('canvas');const max=400;let w=img.width,h=img.height;if(w>max||h>max){if(w>h){h=Math.round(h*(max/w));w=max;}else{w=Math.round(w*(max/h));h=max;}}c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);cb(c.toDataURL('image/jpeg',0.5))};img.src=e.target.result};r.readAsDataURL(file)}
+
+// Modal Actions
+function showAlert(msg) { _modal = { type: 'alert', msg }; R(); }
+function showConfirm(msg, onConfirm) { _modal = { type: 'confirm', msg, onConfirm }; R(); }
+
+// ── Timer ──
+function startTimer(){S.timerStart=Date.now();S.timerRunning=true;S.timerSplits=[];S.timerReview=null;save();tick();R()}
+function tick(){clearInterval(TI);TI=setInterval(()=>{const el=document.getElementById('tn');if(el)el.textContent=fmtT(elapsed())},200)}
+function split(label){S.timerSplits.push({label,time:Date.now()});save();R()}
+
+// STOP → create review data, don't auto-save
+function stopTimer(){
+  clearInterval(TI);S.timerRunning=false;
+  const tot=elapsed();
+  const sp=S.timerSplits;
+  let cl=0,sc=0,fi=0;
+  let lastTime = S.timerStart;
+  
+  const parsedSplits = sp.map((x) => {
+      const durationMs = x.time - lastTime;
+      const durationM = fmtM(durationMs);
+      if(x.label === 'clipper') cl = durationM;
+      if(x.label === 'scissor') sc = durationM;
+      if(x.label === 'finish') fi = durationM;
+      
+      const formattedDur = fmtT(durationMs);
+      lastTime = x.time;
+      return { label: x.label, dur: formattedDur };
+  });
+
+  S.timerReview={
+      breed:S.timerBreed||'',
+      style:S.timerStyle||'',
+      size:S.timerSize,
+      min:fmtM(tot),
+      cl,sc,fi,
+      before:S.timerBeforePhoto||null,
+      splits:parsedSplits
+  };
+  S.timerStart=null;S.timerSplits=[];save();R();
+}
+function cancelTimer(){clearInterval(TI);S.timerStart=null;S.timerRunning=false;S.timerSplits=[];S.timerReview=null;S.timerBeforePhoto=null;save();R()}
+
+// Save from review screen
+let _rvDf=1,_rvAfter=null;
+function saveReview(){
+  const rv=S.timerReview;if(!rv)return;
+  const notes=(document.getElementById('rvNotes')||{}).value||'';
+  S.logs.unshift({id:Date.now(),ts:Date.now(),date:new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),breed:rv.breed,style:rv.style,size:rv.size,min:rv.min,cl:rv.cl,sc:rv.sc,fi:rv.fi,diff:_rvDf,notes:notes.trim(),timed:true,before:rv.before,after:_rvAfter});
+  S.timerReview=null;S.timerBeforePhoto=null;_rvDf=1;_rvAfter=null;save();S.tab='log';R();
+}
+function discardReview(){showConfirm("Discard this timed groom?", () => {S.timerReview=null;S.timerBeforePhoto=null;_rvDf=1;_rvAfter=null;save();R();});}
+
+// ── Render ──
+function R(){
+    const ct=document.getElementById('ct'),nv=document.getElementById('nv'), mod=document.getElementById('modalRoot');
+    const tabs=[{k:'home',i:'🏠',l:'Home'},{k:'timer',i:'⏱️',l:'Timer'},{k:'log',i:'✂️',l:'Log'},{k:'tools',i:'🔧',l:'Tools'},{k:'me',i:'👤',l:'Me'}];
+    
+    // Draw Navigation
+    nv.innerHTML=tabs.map(t=>`<button class="${S.tab===t.k?'on':''}" onclick="go('${t.k}')"><span class="ni">${t.i}</span><span class="nl">${t.l}</span></button>`).join('');
+    
+    // Draw Modals
+    if(_modal) {
+        mod.innerHTML = `
+        <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);animation:fi 0.2s ease-out">
+            <div class="c fi" style="width:100%;max-width:320px;padding:24px;text-align:center;">
+                <div style="font-size:16px;font-weight:600;margin-bottom:20px;color:var(--tx);line-height:1.5">${esc(_modal.msg)}</div>
+                <div style="display:flex;gap:10px;">
+                    ${_modal.type==='confirm' ? `<button style="flex:1;padding:14px;border-radius:12px;border:1px solid var(--bd);color:var(--mu);font-weight:600;font-size:15px;" onclick="_modal=null;R()">Cancel</button>` : ''}
+                    <button style="flex:1;padding:14px;border-radius:12px;background:var(--rd);color:var(--wh);font-weight:600;font-size:15px;" onclick="const cb=_modal.onConfirm; _modal=null; R(); if(cb)cb();">OK</button>
+                </div>
+            </div>
+        </div>`;
+    } else {
+        mod.innerHTML = '';
+    }
+
+    if(!S.onboarded){ct.innerHTML=renderOnboard();return}
+    const fn={home:renderHome,timer:renderTimer,log:renderLog,tools:renderTools,me:renderMe};
+    ct.innerHTML=(fn[S.tab]||renderHome)();
+    if(S.timerRunning)tick();
+}
+
+function go(t){S.tab=t;S.showForm=false;S.editId=null;R();window.scrollTo({top:0,behavior:'smooth'})}
+
+// ════ ONBOARD ════
+function renderOnboard(){return`
+<div style="min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 24px">
+<div style="font-size:64px;margin-bottom:16px">✂️</div>
+<h1 style="font-size:36px;margin-bottom:8px">GroomPace</h1>
+<p style="font-size:14px;color:var(--rd);font-weight:500;letter-spacing:1px;text-transform:uppercase;margin-bottom:24px">Your Personal Speed Tracker</p>
+<p style="font-size:16px;color:var(--tm);line-height:1.7;max-width:320px;margin-bottom:36px">Track your groom times, beat your personal bests, and watch yourself get faster — one dog at a time.</p>
+<div style="display:flex;flex-direction:column;gap:14px;width:100%;max-width:280px;margin-bottom:40px;text-align:left">
+${['⏱️ Live timer with section splits','📸 Before & after photos','📊 Track trends & personal bests','🔧 Blade reference & breed notes','🏆 Earn milestones as you improve','✅ Daily station prep checklist'].map(f=>`<div style="font-size:15px;color:var(--tm);display:flex;align-items:center;">${f}</div>`).join('')}
+</div>
+<button onclick="S.onboarded=true;save();R()" style="width:100%;max-width:280px;padding:18px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:16px;color:var(--wh);font-size:17px;font-weight:600;box-shadow:0 8px 24px rgba(212,132,154,.35)">Let's Go 🐾</button>
+<p style="font-size:12px;color:var(--di);margin-top:20px">Free forever · All data stays on your phone</p>
+</div>`}
+
+// ════ HOME ════
+function renderHome(){const a=getAvg(),t=trend(),wl=weekLogs(),wAvg=wl.length?Math.round(wl.reduce((a,l)=>a+l.min,0)/wl.length):null,recent=S.logs.slice(0,3),earned=ACH.filter(a=>a.ck(S)).length,todayDone=CHK.filter(i=>S.chk[dk()+'_'+i.id]).length,goalsSet=S.goals.dogsPerDay>0||S.goals.avgTarget>0;
+return`<div style="padding-top:env(safe-area-inset-top,12px)">
+<div style="text-align:center;padding:28px 16px 20px;background:linear-gradient(180deg,var(--ca),var(--bg));margin:0 -18px 18px;position:relative;overflow:hidden">
+<div style="position:absolute;top:10px;left:18px;opacity:.06;font-size:40px;transform:rotate(-12deg)">🐾</div>
+<div style="position:absolute;top:40px;right:14px;opacity:.05;font-size:30px;transform:rotate(20deg)">✂️</div>
+<div style="font-size:10px;letter-spacing:2.5px;color:var(--ro);text-transform:uppercase;font-weight:600;margin-bottom:6px">GroomPace</div>
+<h1 style="font-size:26px;line-height:1.2">Welcome back ✂️</h1>
+<p style="font-size:13px;color:var(--mu);margin-top:8px;font-style:italic">"${esc(quote())}"</p></div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+<div class="c fi" style="padding:16px 8px;text-align:center"><div style="font-size:20px;margin-bottom:6px">🐾</div><div style="font-family:Fraunces,serif;font-size:22px;font-weight:600">${S.logs.length}</div><div style="font-size:11px;color:var(--di);margin-top:4px">Total</div></div>
+<div class="c fi" style="padding:16px 8px;text-align:center"><div style="font-size:20px;margin-bottom:6px">⏱️</div><div style="font-family:Fraunces,serif;font-size:22px;font-weight:600">${a?a+'m':'—'}</div><div style="font-size:11px;color:var(--di);margin-top:4px">Avg Time</div></div>
+<div class="c fi" style="padding:16px 8px;text-align:center"><div style="font-size:20px;margin-bottom:6px">${t>0?'📈':'📊'}</div><div style="font-family:Fraunces,serif;font-size:22px;font-weight:600;${t>0?'color:var(--sg)':''}">${t?Math.abs(t)+'m':'—'}</div><div style="font-size:11px;color:var(--di);margin-top:4px">${t>0?'Faster':t<0?'Slower':'Trend'}</div></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+<button onclick="go('timer')" style="background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:var(--r);padding:22px 16px;color:var(--wh);text-align:left;box-shadow:0 8px 24px rgba(212,132,154,.3)"><div style="font-size:26px;margin-bottom:10px">⏱️</div><div style="font-size:16px;font-weight:600">Start Timer</div><div style="font-size:12px;opacity:.9;margin-top:4px">Time your next groom</div></button>
+<button class="c" onclick="go('log');setTimeout(()=>{S.showForm=true;R()},50)" style="border:1px solid var(--bd);border-radius:var(--r);padding:22px 16px;text-align:left"><div style="font-size:26px;margin-bottom:10px">✂️</div><div style="font-size:16px;font-weight:600;color:var(--tx)">Log a Groom</div><div style="font-size:12px;color:var(--mu);margin-top:4px">Manual entry</div></button></div>
+<div class="c" style="padding:18px;margin-bottom:14px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--lv);text-transform:uppercase;font-weight:600;margin-bottom:12px">📊 This Week</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+<div><div style="font-family:Fraunces,serif;font-size:20px;font-weight:600">${wl.length}</div><div style="font-size:11px;color:var(--di)">Dogs</div></div>
+<div><div style="font-family:Fraunces,serif;font-size:20px;font-weight:600">${wAvg?wAvg+'m':'—'}</div><div style="font-size:11px;color:var(--di)">Avg Time</div></div>
+<div><div style="font-family:Fraunces,serif;font-size:20px;font-weight:600;color:${wl.length?'var(--sg)':'var(--tx)'}">${wl.length?Math.min(...wl.map(l=>l.min))+'m':'—'}</div><div style="font-size:11px;color:var(--di)">Fastest</div></div></div>
+${goalsSet?`<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--bl)">
+${S.goals.avgTarget?`<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span style="color:var(--mu)">Avg target: ${S.goals.avgTarget}m</span><span style="font-weight:600;color:${(wAvg||99)<=S.goals.avgTarget?'var(--sg)':'var(--hn)'}">${wAvg?(wAvg<=S.goals.avgTarget?'✅ On track':'⏳ '+Math.abs(wAvg-S.goals.avgTarget)+'m to go'):'—'}</span></div>`:''}
+${S.goals.dogsPerDay?`<div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--mu)">Daily goal: ${S.goals.dogsPerDay}</span><span style="font-weight:600;color:var(--mu)">Avg: ${wl.length?Math.round(wl.length/7*10)/10:0}/day</span></div>`:''}
+</div>`:''}</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+<div class="c" style="padding:16px;cursor:pointer" onclick="go('me')"><div style="font-size:10px;letter-spacing:1.5px;color:var(--hn);text-transform:uppercase;font-weight:600;margin-bottom:6px">🏆 Milestones</div><div style="font-size:15px;font-weight:500">${earned}/${ACH.length}</div></div>
+<div class="c" style="padding:16px;cursor:pointer" onclick="S.tab='me';S.sub2='checklist';R()"><div style="font-size:10px;letter-spacing:1.5px;color:var(--sg);text-transform:uppercase;font-weight:600;margin-bottom:6px">✅ Daily Prep</div><div style="font-size:15px;font-weight:500">${todayDone}/${CHK.length}</div></div></div>
+${recent.length?`<div style="margin-bottom:14px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--di);text-transform:uppercase;font-weight:600;margin-bottom:10px;margin-left:4px">Recent Grooms</div>${recent.map(l=>`<div class="c" style="padding:14px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center"><div><span style="font-size:15px;font-weight:600">${esc(l.breed)}</span>${l.style?`<span style="font-size:13px;color:var(--mu);margin-left:6px">${esc(l.style)}</span>`:''} <span style="margin-left:4px">${l.diff===3?'🔴':l.diff===2?'🟡':''}</span></div><div style="display:flex;align-items:center;gap:6px">${l.timed?'<span style="font-size:11px;color:var(--ro)">⏱</span>':''}${(l.before||l.after)?'<span style="font-size:11px">📸</span>':''}<span style="font-family:Fraunces,serif;font-size:18px;font-weight:600;color:${tc(l.min)}">${l.min}m</span></div></div>`).join('')}</div>`:''}</div>`}
+
+// ════ TIMER ════
+function renderTimer(){
+  const run=S.timerRunning,sp=S.timerSplits,done=sp.map(s=>s.label);
+
+  // ── REVIEW SCREEN (after stop) ──
+  if(S.timerReview){
+    const rv=S.timerReview;
+    return`<div style="padding-top:28px">
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="font-size:11px;letter-spacing:2px;color:var(--sg);text-transform:uppercase;font-weight:600;margin-bottom:8px">✅ Groom Complete!</div>
+      <div class="timer-num" style="color:var(--sg)">${String(Math.floor(rv.min/60)||0).padStart(2,'0')}:${String(rv.min%60||rv.min).padStart(2,'0')}</div>
+      <div style="font-size:15px;color:var(--tm);margin-top:8px;font-weight:500;">${esc(rv.breed)} ${rv.style?'· '+esc(rv.style):''} · <span style="text-transform:capitalize;">${rv.size}</span></div>
+    </div>
+    ${rv.splits.length?`<div class="c" style="padding:16px;margin-bottom:16px">${rv.splits.map((x,i)=>`<div style="display:flex;justify-content:space-between;padding:8px 0;${i<rv.splits.length-1?'border-bottom:1px solid var(--bl)':''}"><span style="font-size:14px;color:var(--tm);text-transform:capitalize">${x.label}</span><span style="font-size:14px;font-weight:600">${x.dur}</span></div>`).join('')}
+    <div style="display:flex;justify-content:space-between;padding:10px 0 0;border-top:2px solid var(--bd);margin-top:4px"><span style="font-size:14px;font-weight:600;color:var(--tx)">Total</span><span style="font-size:14px;font-weight:700;color:${tc(rv.min)}">${rv.min} min</span></div></div>`:''}
+    ${rv.before?`<div style="margin-bottom:16px"><div style="font-size:11px;color:var(--di);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Before Photo</div><img src="${rv.before}" class="photo-thumb" style="width:80px;height:80px;"></div>`:''}
+    <div class="c" style="padding:22px;margin-bottom:16px;border:1px solid rgba(212,132,154,.2)">
+      <div style="font-size:11px;letter-spacing:1.5px;color:var(--rd);text-transform:uppercase;font-weight:600;margin-bottom:16px">Complete Your Log</div>
+      <div style="margin-bottom:16px"><label class="lbl">Difficulty</label>
+        <div style="display:flex;gap:8px" id="rvDf">
+          <button class="diff-btn on-1" style="flex:1;" onclick="rvDiff(1)">🟢 Easy</button>
+          <button class="diff-btn" style="flex:1;" onclick="rvDiff(2)">🟡 Moderate</button>
+          <button class="diff-btn" style="flex:1;" onclick="rvDiff(3)">🔴 Hard</button></div></div>
+      <div style="margin-bottom:16px"><label class="lbl">📸 After Photo</label>
+        <label class="file-btn">
+           ${_rvAfter ? '✅ Photo Added (Tap to change)' : '📸 Tap to upload After photo'}
+           <input type="file" accept="image/*" capture="environment" id="rvPA" onchange="rvPhoto()">
+        </label>
+        <div id="rvPAp" style="margin-top:8px">${_rvAfter ? `<img src="${_rvAfter}" class="photo-thumb">` : ''}</div></div>
+      <div style="margin-bottom:18px"><label class="lbl">Notes</label><input class="inp" id="rvNotes" placeholder="How did it go?"></div>
+      <div style="display:flex;gap:12px">
+        <button onclick="saveReview()" style="flex:1;padding:16px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(212,132,154,.35)">Save to Log 🐾</button>
+        <button onclick="discardReview()" style="padding:16px 20px;border:1px solid var(--bd);border-radius:14px;color:var(--mu);font-size:15px;font-weight:500;">Discard</button></div>
+    </div></div>`}
+
+  // ── SETUP SCREEN ──
+  if(!run&&!S.timerStart) return`
+  <div style="padding-top:28px"><h2 style="font-size:26px;margin-bottom:6px">Live Timer</h2><p style="font-size:14px;color:var(--mu);margin-bottom:28px">Set up, then start when the dog hits the table.</p>
+  <div class="c" style="padding:22px;margin-bottom:18px">
+    <div style="margin-bottom:16px"><label class="lbl">Breed</label><input class="inp" id="tB" placeholder="e.g. Goldendoodle" value="${esc(S.timerBreed)}"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+      <div><label class="lbl">Style</label><input class="inp" id="tS" placeholder="e.g. Teddy bear" value="${esc(S.timerStyle)}"></div>
+      <div><label class="lbl">Size</label><div style="display:flex;gap:6px">${['small','medium','large'].map(s=>`<button class="pill ${S.timerSize===s?'on':''}" style="flex:1;padding:14px 4px;" onclick="S.timerSize='${s}';save();R()">${s}</button>`).join('')}</div></div></div>
+    <div><label class="lbl">📸 Before Photo (optional)</label>
+      <label class="file-btn">
+         ${S.timerBeforePhoto ? '✅ Photo Added (Tap to change)' : '📸 Tap to upload Before photo'}
+         <input type="file" accept="image/*" capture="environment" id="tPB" onchange="timerBeforePhoto()">
+      </label>
+      <div id="tPBp" style="margin-top:8px">${S.timerBeforePhoto?`<img src="${S.timerBeforePhoto}" class="photo-thumb">`:''}</div></div>
+  </div>
+  <button onclick="S.timerBreed=document.getElementById('tB').value;S.timerStyle=document.getElementById('tS').value;startTimer()" style="width:100%;padding:20px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:16px;color:var(--wh);font-size:18px;font-weight:600;box-shadow:0 8px 24px rgba(212,132,154,.35)">▶ Start Timer</button>
+  <p style="font-size:13px;color:var(--di);text-align:center;margin-top:16px;line-height:1.6">Tap split buttons during the groom to track<br>clipper → scissor → finish time automatically.</p></div>`;
+
+  // ── RUNNING SCREEN ──
+  return`<div style="padding-top:40px;text-align:center">
+  <div style="font-size:14px;color:var(--mu);margin-bottom:8px;font-weight:500;">${esc(S.timerBreed)} ${S.timerStyle?'· '+esc(S.timerStyle):''}</div>
+  <div class="timer-num run" id="tn">${fmtT(elapsed())}</div>
+  <div style="display:flex;gap:10px;justify-content:center;margin:32px 0">
+  ${[{l:'clipper',e:'🔌',t:'Clipper'},{l:'scissor',e:'✂️',t:'Scissor'},{l:'finish',e:'✨',t:'Finish'}].map(s=>{const d=done.includes(s.l);return`<button onclick="${run&&!d?`split('${s.l}')`:''}" style="padding:14px 18px;border-radius:14px;font-size:14px;font-weight:600;${d?'background:var(--ss);color:var(--sg);':'background:var(--card);border:1px solid var(--bd);color:var(--tm);box-shadow:var(--sh);'}${!run||d?'opacity:.5;':''}">${s.e} ${s.t}${d?' ✓':''}</button>`}).join('')}</div>
+  ${sp.length?`<div class="c" style="padding:18px;margin-bottom:28px;text-align:left">${sp.map((x,i)=>{const prev=i===0?S.timerStart:sp[i-1].time;return`<div style="display:flex;justify-content:space-between;padding:8px 0;${i<sp.length-1?'border-bottom:1px solid var(--bl)':''}"><span style="font-size:14px;color:var(--tm);text-transform:capitalize">${x.label}</span><span style="font-size:14px;font-weight:600">${fmtT(x.time-prev)}</span></div>`}).join('')}</div>`:''}
+  <div style="display:flex;gap:12px;justify-content:center;margin-top:auto;">
+  <button onclick="stopTimer()" style="flex:2;padding:18px;background:var(--sg);border-radius:16px;color:var(--wh);font-size:17px;font-weight:600;box-shadow:0 6px 20px rgba(123,175,142,.3)">⏹ Done</button>
+  <button onclick="cancelTimer()" style="flex:1;padding:18px;border:1px solid var(--bd);border-radius:16px;color:var(--mu);font-size:16px;font-weight:500;">Cancel</button></div></div>`}
+
+function timerBeforePhoto(){const f=document.getElementById('tPB').files[0];if(!f)return;compressPhoto(f,data=>{S.timerBeforePhoto=data;save();R();})}
+function rvDiff(d){_rvDf=d;document.querySelectorAll('#rvDf .diff-btn').forEach((b,i)=>{b.className='diff-btn';if(i+1===d)b.classList.add('on-'+d)})}
+function rvPhoto(){const f=document.getElementById('rvPA').files[0];if(!f)return;compressPhoto(f,data=>{_rvAfter=data;R();})}
+
+// ════ LOG ════
+function renderLog(){return`<div style="padding-top:28px"><h2 style="font-size:26px;margin-bottom:6px">Groom Log</h2><p style="font-size:14px;color:var(--mu);margin-bottom:24px">All your tracked grooms.</p>
+${S.editId?renderEditForm():S.showForm?renderLogForm():`<button onclick="S.showForm=true;R()" style="width:100%;padding:20px;background:var(--rg);border:2px dashed rgba(212,132,154,.35);border-radius:var(--r);color:var(--rd);font-size:16px;font-weight:600;margin-bottom:20px">🐾 Log a Groom Manually</button>`}
+${S.logs.length===0&&!S.showForm&&!S.editId?`<div style="text-align:center;padding:60px 20px"><div style="font-size:56px;margin-bottom:16px">✂️</div><div style="font-size:16px;color:var(--tm);font-weight:500">No grooms yet</div></div>`:`
+${!S.showForm&&!S.editId&&S.logs.length>=3?`<div class="c" style="padding:20px 14px;margin-bottom:18px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--di);text-transform:uppercase;font-weight:600;margin-bottom:16px;margin-left:4px">Recent Trend</div>${renderChart(S.logs.slice(0,14).reverse())}</div>`:''}
+${!S.showForm&&!S.editId?S.logs.map(l=>`<div class="c" style="padding:18px;margin-bottom:14px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+<div><span style="font-size:16px;font-weight:600">${esc(l.breed)}</span>${l.style?`<span style="font-size:13px;color:var(--mu);margin-left:8px">${esc(l.style)}</span>`:''}</div>
+<div style="display:flex;align-items:center;gap:8px">${l.diff===3?'🔴':l.diff===2?'🟡':'🟢'}${l.timed?'<span style="font-size:12px;color:var(--ro)">⏱</span>':''}<span style="font-family:Fraunces,serif;font-size:20px;font-weight:600;color:${tc(l.min)}">${l.min}m</span></div></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${l.cl?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Clipper ${l.cl}m</span>`:''}${l.sc?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Scissor ${l.sc}m</span>`:''}${l.fi?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Finish ${l.fi}m</span>`:''}
+<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);text-transform:capitalize;font-weight:500;">${esc(l.size)}</span></div>
+${(l.before||l.after)?`<div style="display:flex;gap:12px;margin-bottom:12px">${l.before?`<div><div style="font-size:10px;color:var(--di);margin-bottom:4px;font-weight:600;">BEFORE</div><img src="${l.before}" class="photo-thumb" style="width:72px;height:72px;"></div>`:''}${l.after?`<div><div style="font-size:10px;color:var(--di);margin-bottom:4px;font-weight:600;">AFTER</div><img src="${l.after}" class="photo-thumb" style="width:72px;height:72px;"></div>`:''}</div>`:''}
+${l.notes?`<div style="font-size:13px;color:var(--di);margin-bottom:12px;font-style:italic">"${esc(l.notes)}"</div>`:''}
+<div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid var(--bl)"><span style="font-size:12px;color:var(--di)">${esc(l.date)}</span>
+<div><button onclick="editLog(${l.id})" style="font-size:13px;color:var(--ro);margin-right:16px;font-weight:600">Edit</button><button onclick="delLog(${l.id})" style="font-size:13px;color:var(--di)">Delete</button></div></div></div>`).join(''):''}`}</div>`}
+
+function renderChart(logs){if(logs.length<2)return'';const mx=Math.max(...logs.map(l=>l.min)),mn=Math.min(...logs.map(l=>l.min)),rng=Math.max(mx-mn,10);
+return`<div style="height:80px;display:flex;align-items:flex-end;gap:4px;padding:0 4px">${logs.map(l=>{const h=Math.max(((l.min-mn)/rng)*60+16,14);return`<div style="flex:1;height:${h}px;background:linear-gradient(180deg,${tc(l.min)},${tc(l.min)}88);border-radius:6px 6px 3px 3px;position:relative"><div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--mu);font-weight:600;white-space:nowrap">${l.min}</div></div>`}).join('')}</div>`}
+
+// ── Manual Log Form ──
+let _sz='medium',_df=1,_phB=null,_phA=null;
+function renderLogForm(){return`<div class="c" style="border:1px solid rgba(212,132,154,.25);border-radius:18px;padding:22px;margin-bottom:18px;box-shadow:var(--su)">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px"><span style="font-size:24px">🐾</span><h3 style="font-size:20px;color:var(--rd)">Log a Groom</h3></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px"><div><label class="lbl">Breed *</label><input class="inp" id="fB" placeholder="e.g. Shih Tzu"></div><div><label class="lbl">Style</label><input class="inp" id="fSt" placeholder="e.g. Teddy bear"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px"><div><label class="lbl">Size</label><div style="display:flex;gap:6px" id="szB">${['small','medium','large'].map(s=>`<button class="pill ${_sz===s?'on':''}" style="flex:1;padding:12px 2px;" onclick="pSz('${s}')">${s}</button>`).join('')}</div></div>
+<div><label class="lbl">Difficulty</label><div style="display:flex;gap:6px" id="dfB"><button class="diff-btn ${_df===1?'on-1':''}" style="flex:1" onclick="pDf(1)">🟢</button><button class="diff-btn ${_df===2?'on-2':''}" style="flex:1" onclick="pDf(2)">🟡</button><button class="diff-btn ${_df===3?'on-3':''}" style="flex:1" onclick="pDf(3)">🔴</button></div></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px"><div><label class="lbl">Total Time (min) *</label><input class="inp" id="fT" type="number" inputmode="numeric" placeholder="45"></div><div><label class="lbl">Clipper (min)</label><input class="inp" id="fC" type="number" inputmode="numeric"></div><div><label class="lbl">Scissor (min)</label><input class="inp" id="fSc" type="number" inputmode="numeric"></div><div><label class="lbl">Finish (min)</label><input class="inp" id="fF" type="number" inputmode="numeric"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+  <div><label class="lbl">📸 Before</label><label class="file-btn">${_phB?'✅ Change':'📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="fPB" onchange="hPh('fPB','B')"></label><div id="pvB" style="margin-top:8px">${_phB?`<img src="${_phB}" class="photo-thumb">`:''}</div></div>
+  <div><label class="lbl">📸 After</label><label class="file-btn">${_phA?'✅ Change':'📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="fPA" onchange="hPh('fPA','A')"></label><div id="pvA" style="margin-top:8px">${_phA?`<img src="${_phA}" class="photo-thumb">`:''}</div></div>
+</div>
+<div style="margin-bottom:20px"><label class="lbl">Notes</label><input class="inp" id="fN" placeholder="Optional notes"></div>
+<div style="display:flex;gap:12px"><button onclick="submitLog()" style="flex:2;padding:16px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(212,132,154,.35)">Save 🐾</button><button onclick="S.showForm=false;_phB=null;_phA=null;R()" style="flex:1;padding:16px;border:1px solid var(--bd);border-radius:14px;color:var(--mu);font-size:15px;font-weight:500;">Cancel</button></div></div>`}
+
+function pSz(s){_sz=s;R();}
+function pDf(d){_df=d;R();}
+function hPh(iid,which){const f=document.getElementById(iid).files[0];if(!f)return;compressPhoto(f,data=>{if(which==='B')_phB=data;else _phA=data; R();})}
+function submitLog(){const b=document.getElementById('fB').value.trim(),t=Math.max(0,parseInt(document.getElementById('fT').value)||0);if(!b||!t){showAlert('Please enter a breed and a valid total time.');return}
+S.logs.unshift({id:Date.now(),ts:Date.now(),date:new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),breed:b,style:document.getElementById('fSt').value.trim(),size:_sz,min:t,cl:Math.max(0,parseInt(document.getElementById('fC').value)||0),sc:Math.max(0,parseInt(document.getElementById('fSc').value)||0),fi:Math.max(0,parseInt(document.getElementById('fF').value)||0),diff:_df,notes:document.getElementById('fN').value.trim(),timed:false,before:_phB,after:_phA});
+S.showForm=false;_sz='medium';_df=1;_phB=null;_phA=null;save();R()}
+
+// ── Edit Log ──
+let _edSz='medium',_edDf=1,_edPhB=null,_edPhA=null;
+function editLog(id){
+    S.editId=id;
+    const l=S.logs.find(x=>x.id===id);
+    if(!l)return;
+    _edSz=l.size||'medium';_edDf=l.diff||1;_edPhB=l.before;_edPhA=l.after;
+    R();
+}
+function renderEditForm(){
+const l = S.logs.find(x=>x.id===S.editId);
+if(!l) return '';
+return`<div class="c" style="border:1px solid rgba(123,175,142,.4);border-radius:18px;padding:22px;margin-bottom:18px;box-shadow:var(--su)">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px"><span style="font-size:24px">✏️</span><h3 style="font-size:20px;color:var(--sg)">Edit Groom</h3></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px"><div><label class="lbl">Breed *</label><input class="inp" id="eB" value="${esc(l.breed||'')}"></div><div><label class="lbl">Style</label><input class="inp" id="eSt" value="${esc(l.style||'')}"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px"><div><label class="lbl">Size</label><div style="display:flex;gap:6px" id="edSzB">${['small','medium','large'].map(s=>`<button class="pill ${_edSz===s?'on':''}" style="flex:1;padding:12px 2px;" onclick="eSz('${s}')">${s}</button>`).join('')}</div></div>
+<div><label class="lbl">Difficulty</label><div style="display:flex;gap:6px" id="edDfB"><button class="diff-btn ${_edDf===1?'on-1':''}" style="flex:1;" onclick="eDf(1)">🟢</button><button class="diff-btn ${_edDf===2?'on-2':''}" style="flex:1;" onclick="eDf(2)">🟡</button><button class="diff-btn ${_edDf===3?'on-3':''}" style="flex:1;" onclick="eDf(3)">🔴</button></div></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px"><div><label class="lbl">Total (min) *</label><input class="inp" id="eT" type="number" inputmode="numeric" value="${l.min||''}"></div><div><label class="lbl">Clipper</label><input class="inp" id="eC" type="number" inputmode="numeric" value="${l.cl||''}"></div><div><label class="lbl">Scissor</label><input class="inp" id="eSc" type="number" inputmode="numeric" value="${l.sc||''}"></div><div><label class="lbl">Finish</label><input class="inp" id="eF" type="number" inputmode="numeric" value="${l.fi||''}"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+  <div><label class="lbl">📸 Before</label>${_edPhB?`<div style="margin-bottom:8px;position:relative;display:inline-block;"><img src="${_edPhB}" class="photo-thumb"><button onclick="_edPhB=null;R();" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>`:''}<label class="file-btn">${_edPhB?'Change Photo':'📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="ePB" onchange="ePhH('ePB','B')"></label></div>
+  <div><label class="lbl">📸 After</label>${_edPhA?`<div style="margin-bottom:8px;position:relative;display:inline-block;"><img src="${_edPhA}" class="photo-thumb"><button onclick="_edPhA=null;R();" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>`:''}<label class="file-btn">${_edPhA?'Change Photo':'📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="ePA" onchange="ePhH('ePA','A')"></label></div>
+</div>
+<div style="margin-bottom:20px"><label class="lbl">Notes</label><input class="inp" id="eN" placeholder="Notes" value="${esc(l.notes||'')}"></div>
+<div style="display:flex;gap:12px"><button onclick="saveEdit()" style="flex:2;padding:16px;background:var(--sg);border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(123,175,142,.3)">Save Changes ✓</button><button onclick="S.editId=null;R()" style="flex:1;padding:16px;border:1px solid var(--bd);border-radius:14px;color:var(--mu);font-size:15px;font-weight:500;">Cancel</button></div></div>`}
+
+function eSz(s){_edSz=s;R();}
+function eDf(d){_edDf=d;R();}
+function ePhH(iid,which){const f=document.getElementById(iid).files[0];if(!f)return;compressPhoto(f,data=>{if(which==='B')_edPhB=data;else _edPhA=data; R();})}
+function saveEdit(){const l=S.logs.find(x=>x.id===S.editId);if(!l)return;const b=document.getElementById('eB').value.trim(),t=Math.max(0,parseInt(document.getElementById('eT').value)||0);if(!b||!t){showAlert('Breed and valid time required.');return}
+l.breed=b;l.style=document.getElementById('eSt').value.trim();l.size=_edSz;l.diff=_edDf;l.min=t;l.cl=Math.max(0,parseInt(document.getElementById('eC').value)||0);l.sc=Math.max(0,parseInt(document.getElementById('eSc').value)||0);l.fi=Math.max(0,parseInt(document.getElementById('eF').value)||0);l.notes=document.getElementById('eN').value.trim();l.before=_edPhB;l.after=_edPhA;
+S.editId=null;save();R()}
+function delLog(id){showConfirm('Delete this groom record permanently?', () => {S.logs=S.logs.filter(l=>l.id!==id);save();R();})}
+
+// ════ TOOLS ════
+function renderTools(){const sub=S.sub||'blades';
+return`<div style="padding-top:28px"><h2 style="font-size:26px;margin-bottom:18px">Tools</h2>
+<div style="display:flex;gap:6px;margin-bottom:20px;background:var(--ca);padding:6px;border-radius:14px">
+${[{k:'blades',l:'🔧 Blades'},{k:'breeds',l:'🐕 Breeds'},{k:'goals',l:'🎯 Goals'}].map(t=>`<button class="sub-tab ${sub===t.k?'on':''}" style="flex:1;padding:12px 6px;text-align:center;" onclick="S.sub='${t.k}';S.showBreedForm=false;S.editBreedKey=null;R()">${t.l}</button>`).join('')}</div>
+${sub==='blades'?renderBlades():sub==='breeds'?renderBreeds():renderGoals()}</div>`}
+
+function renderBlades(){return`
+<div class="c" style="padding:20px;margin-bottom:16px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--rd);text-transform:uppercase;font-weight:600;margin-bottom:6px">Clipper Blades</div><div style="font-size:12px;color:var(--mu);margin-bottom:14px">Higher number = shorter cut</div>
+<table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="border-bottom:2px solid var(--bd)"><th style="text-align:left;padding:8px 4px;color:var(--mu);font-weight:600">Blade</th><th style="text-align:left;padding:8px 4px;color:var(--mu);font-weight:600">Length</th><th style="text-align:left;padding:8px 4px;color:var(--mu);font-weight:600">Use</th></tr>
+${BLADES.map((b,i)=>`<tr style="border-bottom:1px solid var(--bl);${i%2?'background:var(--ca)':''}"><td style="padding:10px 4px;font-weight:600;color:var(--rd);white-space:nowrap">${b.n}</td><td style="padding:10px 4px;white-space:nowrap">${b.len} <span style="color:var(--di);font-size:11px;">(${b.mm}mm)</span></td><td style="padding:10px 4px;color:var(--tm);line-height:1.4">${b.area}</td></tr>`).join('')}</table></div>
+<div class="c" style="padding:20px;margin-bottom:16px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--hn);text-transform:uppercase;font-weight:600;margin-bottom:6px">Guard Combs</div><div style="font-size:12px;color:var(--mu);margin-bottom:14px">Attach over a #30 or #40 blade</div>
+<table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="border-bottom:2px solid var(--bd)"><th style="text-align:left;padding:8px 4px;color:var(--mu);font-weight:600">Comb</th><th style="text-align:left;padding:8px 4px;color:var(--mu);font-weight:600">Length</th><th style="text-align:left;padding:8px 4px;color:var(--mu);font-weight:600">mm</th></tr>
+${GUARDS.map((g,i)=>`<tr style="border-bottom:1px solid var(--bl);${i%2?'background:var(--ca)':''}"><td style="padding:10px 4px;font-weight:600;color:var(--hn)">${g.n}</td><td style="padding:10px 4px">${g.len}</td><td style="padding:10px 4px;color:var(--di)">${g.mm}mm</td></tr>`).join('')}</table></div>
+<div class="c" style="padding:20px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--sg);text-transform:uppercase;font-weight:600;margin-bottom:10px">💡 Quick Tips</div><div style="font-size:13px;color:var(--tm);line-height:1.6"><p style="margin-bottom:8px">• <strong>#10</strong> — workhorse: sanitary, pads, poodle faces, base for combs.</p><p style="margin-bottom:8px">• <strong>#7F</strong> — most popular body blade, smooth finish.</p><p style="margin-bottom:8px">• <strong>F = Finish</strong> (smooth). Skip-tooth = rough/bulk removal.</p><p style="margin-bottom:8px">• <strong>With the grain</strong> leaves one blade length longer.</p><p>• Blades hot? Swap to a cool backup on a ceramic tile.</p></div></div>`}
+
+// ── Breed Notes (INLINE FORMS — no prompts) ──
+function renderBreeds(){const breeds=Object.keys(S.breedNotes).sort();
+const showForm=S.showBreedForm,editKey=S.editBreedKey;
+return`<div class="c" style="padding:20px;margin-bottom:16px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+<div style="font-size:11px;letter-spacing:1.5px;color:var(--lv);text-transform:uppercase;font-weight:600">📒 Your Breed Notes</div>
+${!showForm&&!editKey?`<button onclick="S.showBreedForm=true;R()" style="padding:8px 16px;background:var(--rg);border:1px solid var(--ro);border-radius:10px;color:var(--rd);font-size:13px;font-weight:600">+ Add Breed</button>`:''}</div>
+
+${showForm?renderBreedForm(null):''}
+${breeds.length===0&&!showForm?`<div style="text-align:center;padding:30px 20px;color:var(--di);font-size:14px">No breed notes yet. Tap "+ Add Breed" to start.</div>`:''}
+${breeds.map(b=>{const n=S.breedNotes[b];
+if(editKey===b) return renderBreedForm(b);
+return`<div style="padding:14px 0;border-bottom:1px solid var(--bl)">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+<span style="font-size:16px;font-weight:600;text-transform:capitalize;color:var(--tx)">${esc(b)}</span>
+<div><button onclick="S.editBreedKey='${esc(b)}';R()" style="font-size:13px;color:var(--ro);margin-right:12px;font-weight:600;">Edit</button><button onclick="delBreed('${esc(b)}')" style="font-size:16px;color:var(--di);font-weight:bold;">×</button></div></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+${n.blade?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Blade: ${esc(n.blade)}</span>`:''}
+${n.comb?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Comb: ${esc(n.comb)}</span>`:''}
+${n.targetMin?`<span style="background:var(--ca);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--tm);font-weight:500;">Target: ${n.targetMin}m</span>`:''}
+</div>${n.notes?`<div style="font-size:13px;color:var(--mu);line-height:1.5;margin-top:6px;">${esc(n.notes)}</div>`:''}</div>`}).join('')}</div>`}
+
+function renderBreedForm(existingKey){
+  const isEdit=!!existingKey;const n=isEdit?S.breedNotes[existingKey]:{blade:'',comb:'',targetMin:0,notes:''};
+  return`<div style="padding:18px;background:var(--ca);border-radius:14px;margin-bottom:16px;border:1px solid ${isEdit?'var(--lv)':'var(--ro)'}40">
+  <div style="font-size:13px;font-weight:600;color:${isEdit?'var(--lv)':'var(--rd)'};margin-bottom:14px">${isEdit?'✏️ Edit '+existingKey:'🐕 New Breed'}</div>
+  ${!isEdit?`<div style="margin-bottom:14px"><label class="lbl">Breed Name *</label><input class="inp" id="bnName" placeholder="e.g. Shih Tzu"></div>`:''}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label class="lbl">Blade</label><input class="inp" id="bnBlade" placeholder="e.g. #7F" value="${esc(n.blade)}"></div>
+    <div><label class="lbl">Guard Comb</label><input class="inp" id="bnComb" placeholder="e.g. #1" value="${esc(n.comb)}"></div></div>
+  <div style="margin-bottom:14px"><label class="lbl">Target Time (min)</label><input class="inp" id="bnTarget" type="number" inputmode="numeric" placeholder="e.g. 35" value="${n.targetMin||''}"></div>
+  <div style="margin-bottom:16px"><label class="lbl">Style Notes / Tips</label><input class="inp" id="bnNotes" placeholder="e.g. Round head, fuller legs" value="${esc(n.notes)}"></div>
+  <div style="display:flex;gap:12px">
+    <button onclick="saveBreedNote(${isEdit?`'${esc(existingKey)}'`:'null'})" style="flex:2;padding:14px;background:${isEdit?'var(--lv)':'var(--ro)'};border-radius:12px;color:var(--wh);font-size:14px;font-weight:600">${isEdit?'Save Changes':'Add Breed'}</button>
+    <button onclick="S.showBreedForm=false;S.editBreedKey=null;R()" style="flex:1;padding:14px 16px;border:1px solid var(--bd);border-radius:12px;color:var(--mu);font-size:14px;font-weight:500;">Cancel</button></div></div>`}
+
+function saveBreedNote(existingKey){
+  let key=existingKey;
+  if(!key){const nameEl=document.getElementById('bnName');if(!nameEl||!nameEl.value.trim()){showAlert('Please enter a breed name');return}key=nameEl.value.trim().toLowerCase()}
+  S.breedNotes[key]={blade:document.getElementById('bnBlade').value.trim(),comb:document.getElementById('bnComb').value.trim(),targetMin:parseInt(document.getElementById('bnTarget').value)||0,notes:document.getElementById('bnNotes').value.trim()};
+  S.showBreedForm=false;S.editBreedKey=null;save();R()}
+function delBreed(b){showConfirm('Delete notes for '+b+'?', () => {delete S.breedNotes[b];save();R();})}
+
+function renderGoals(){const a = getAvg(); return`<div class="c" style="padding:20px;margin-bottom:16px">
+<div style="font-size:11px;letter-spacing:1.5px;color:var(--hn);text-transform:uppercase;font-weight:600;margin-bottom:16px">🎯 Your Goals</div>
+<div style="margin-bottom:20px"><label class="lbl">Dogs Per Day Target</label><input class="inp" id="gD" type="number" inputmode="numeric" value="${S.goals.dogsPerDay||''}" placeholder="e.g. 8" onchange="S.goals.dogsPerDay=Math.max(0,parseInt(this.value)||0);save()"></div>
+<div style="margin-bottom:20px"><label class="lbl">Average Groom Time Target (min)</label><input class="inp" id="gA" type="number" inputmode="numeric" value="${S.goals.avgTarget||''}" placeholder="e.g. 35" onchange="S.goals.avgTarget=Math.max(0,parseInt(this.value)||0);save()"></div>
+<div style="padding:16px;background:var(--ca);border-radius:14px"><div style="font-size:14px;font-weight:600;margin-bottom:10px;color:var(--tx)">Progress Snapshot</div><div style="font-size:14px;color:var(--tm);line-height:1.7">
+<p style="margin-bottom:6px;">Current average: <strong style="color:var(--tx)">${a?a+'m':'No data'}</strong>${S.goals.avgTarget?` (goal: ${S.goals.avgTarget}m ${a&&a<=S.goals.avgTarget?'✅':''})`  :''}</p>
+<p style="margin-bottom:6px;">This week: <strong style="color:var(--tx)">${weekLogs().length} dogs</strong>${S.goals.dogsPerDay?` (daily goal: ${S.goals.dogsPerDay})`:''}</p>
+<p>Total logged: <strong style="color:var(--tx)">${S.logs.length}</strong></p>
+${S.goals.avgTarget&&a?`<p style="margin-top:10px;font-weight:600;font-size:13px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.05);color:${a<=S.goals.avgTarget?'var(--sg)':'var(--hn)'}">You are ${a<=S.goals.avgTarget?'meeting your time goal! 🎉':Math.abs(a-S.goals.avgTarget)+'m away from goal.'}</p>`:''}</div></div></div>`}
+
+// ════ ME ════
+function renderMe(){const sub=S.sub2||'achievements';
+return`<div style="padding-top:28px"><h2 style="font-size:26px;margin-bottom:18px">Profile</h2>
+<div style="display:flex;gap:6px;margin-bottom:20px;background:var(--ca);padding:6px;border-radius:14px">
+${[{k:'achievements',l:'🏆 Milestones'},{k:'checklist',l:'✅ Prep'},{k:'stats',l:'📊 Stats'}].map(t=>`<button class="sub-tab ${sub===t.k?'on':''}" style="flex:1;padding:12px 6px;text-align:center;" onclick="S.sub2='${t.k}';R()">${t.l}</button>`).join('')}</div>
+${sub==='achievements'?renderAch():sub==='checklist'?renderChecklist():renderStats()}</div>`}
+
+function renderAch(){return`<div class="c" style="padding:20px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--lv);text-transform:uppercase;font-weight:600;margin-bottom:16px">🎖️ Milestones · ${ACH.filter(a=>a.ck(S)).length}/${ACH.length}</div>
+${ACH.map(a=>{const e=a.ck(S);return`<div style="display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--bl)"><span style="font-size:26px;${e?'':'filter:grayscale(1);opacity:.3'}">${a.e}</span><div style="flex:1"><div style="font-size:14px;font-weight:600;color:${e?'var(--tx)':'var(--di)'};margin-bottom:2px;">${a.t}</div><div style="font-size:12px;color:var(--mu)">${a.d}</div></div>${e?'<span style="color:var(--sg);font-size:18px;font-weight:bold;">✓</span>':'<span style="color:var(--di);font-size:14px">🔒</span>'}</div>`}).join('')}</div>`}
+
+function renderChecklist(){const d=dk();return`<div class="c" style="padding:20px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--sg);text-transform:uppercase;font-weight:600;margin-bottom:18px">✅ Station Prep — ${new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}</div>
+${CHK.map(item=>{const k=d+'_'+item.id,on=!!S.chk[k];return`<div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--bl)"><button class="chk ${on?'on':''}" onclick="S.chk['${k}']=!S.chk['${k}'];save();R()">${on?'✓':''}</button><span style="font-size:15px;color:${on?'var(--di)':'var(--tx)'};${on?'text-decoration:line-through':''}">${item.t}</span></div>`}).join('')}</div>`}
+
+function renderStats(){const p=pbs();const a=getAvg();return`
+${p.length?`<div class="c" style="padding:20px;margin-bottom:16px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--hn);text-transform:uppercase;font-weight:600;margin-bottom:14px">🏆 Personal Bests</div>${p.map((l,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;${i<p.length-1?'border-bottom:1px solid var(--bl)':''}"><span style="font-size:15px;font-weight:500;text-transform:capitalize;color:var(--tx)">${esc(l.breed)}</span><span style="font-family:Fraunces,serif;font-size:18px;font-weight:600;color:${tc(l.min)}">${l.min}m</span></div>`).join('')}</div>`:''}
+<div class="c" style="padding:20px;margin-bottom:20px"><div style="font-size:11px;letter-spacing:1.5px;color:var(--co);text-transform:uppercase;font-weight:600;margin-bottom:14px">📊 Overall</div><div style="font-size:14px;color:var(--tm);line-height:1.8">
+<p>Total logged: <strong style="color:var(--tx)">${S.logs.length}</strong> · Breeds: <strong style="color:var(--tx)">${new Set(S.logs.map(l=>l.breed.toLowerCase())).size}</strong></p>
+<p>Average time: <strong style="color:var(--tx)">${a?a+'m':'—'}</strong>${S.logs.length?` · Fastest: <strong style="color:var(--sg)">${Math.min(...S.logs.map(l=>l.min))}m</strong>`:''}</p>
+<p>Live Timed: <strong style="color:var(--tx)">${S.logs.filter(l=>l.timed).length}</strong> · Photos: <strong style="color:var(--tx)">${S.logs.filter(l=>l.before||l.after).length}</strong></p>
+<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bl);display:flex;gap:14px;">
+  <span>🟢 ${S.logs.filter(l=>l.diff===1).length} Easy</span>
+  <span>🟡 ${S.logs.filter(l=>l.diff===2).length} Mod</span>
+  <span>🔴 ${S.logs.filter(l=>l.diff===3).length} Hard</span>
+</div></div></div>
+<div style="text-align:center;padding:20px 20px 40px;"><button onclick="showConfirm('Reset ALL data? This cannot be undone.', () => {localStorage.removeItem(SK);location.reload();})" style="font-size:13px;color:var(--di);text-decoration:underline;padding:10px;">Reset All App Data</button></div>`}
+
+// ── Init ──
+load();R();
+</script>
+</body>
+</html>
