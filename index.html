@@ -121,7 +121,7 @@ textarea.inp { resize: vertical; min-height: 60px; }
     <datalist id="dogNameList"></datalist>
 </div>
 <script>
-const SK = 'groompace-v3';
+const SK = 'groompace-v4';
 
 // ── Data ──
 const BLADES = [
@@ -395,6 +395,9 @@ function migrate(state) {
 
 // ── Initialization & Storage ──
 function load() {
+     // Always start with reset flag cleared. Belt-and-suspenders against
+    // any scenario where it somehow persisted from a previous session.
+    _resetting = false;
     try {
         const raw = localStorage.getItem(SK);
         if (raw) {
