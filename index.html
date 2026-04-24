@@ -197,6 +197,136 @@ let TI = null;
 let _modal = null;
 let _toast = null;
 let _toastTimer = null;
+let _resetting = false; // When true, save() is a no-op. Prevents beforeunload
+                        // from re-saving data that's in the middle of being wiped.
+
+
+// ── Photo Storage (IndexedDB) ──
+// Photos are stored in IndexedDB instead of localStorage because they're
+// large (tens of KB each as base64) and would quickly exhaust localStorage's
+// ~5MB cap. localStorage still holds all the groom metadata including
+// photo IDs; when a view needs to display a photo, it fetches from IDB.
+//
+// Backward compat: logs with `before`/`after` already containing a data URL
+// (from before this change) continue to work. New photos are saved to IDB
+// and the log entry stores a small reference string like "idb:photo_123".
+
+const DB_NAME = 'groompace-photos';
+const DB_VERSION = 1;
+const STORE = 'photos';
+let _dbPromise = null;
+
+// Open (or create) the IndexedDB database. Called lazily on first photo op.
+// Returns a promise that resolves to the opened database.
+function openPhotoDB() {
+    if (_dbPromise) return _dbPromise;
+    _dbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains(STORE)) {
+                db.createObjectStore(STORE);
+            }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+    return _dbPromise;
+}
+
+// Save a base64 data URL under a generated ID. Returns the ID string.
+async function savePhoto(dataUrl) {
+    if (!dataUrl || typeof dataUrl !== 'string') return null;
+    // If it's already an idb: reference, no work to do.
+    if (dataUrl.startsWith('idb:')) return dataUrl;
+    try {
+        const db = await openPhotoDB();
+        const id = 'idb:photo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE, 'readwrite');
+            tx.objectStore(STORE).put(dataUrl, id);
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+        });
+        return id;
+    } catch (err) {
+        console.error('Failed to save photo to IDB:', err);
+        // Fall back to returning the raw data URL so at least the photo
+        // shows up in the current session, even if storage isn't durable.
+        return dataUrl;
+    }
+}
+
+// Load a photo by ID. Accepts either an idb: reference OR a raw data URL
+// (for backward compat with photos saved before this change).
+// Returns the data URL, or null if not found.
+async function loadPhoto(ref) {
+    if (!ref) return null;
+    if (typeof ref !== 'string') return null;
+    if (!ref.startsWith('idb:')) return ref; // legacy inline data URL
+    try {
+        const db = await openPhotoDB();
+        return await new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE, 'readonly');
+            const req = tx.objectStore(STORE).get(ref);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => reject(req.error);
+        });
+    } catch (err) {
+        console.error('Failed to load photo from IDB:', err);
+        return null;
+    }
+}
+
+// Delete a photo by ID. Called when a log is deleted or photo is cleared.
+async function deletePhoto(ref) {
+    if (!ref || typeof ref !== 'string' || !ref.startsWith('idb:')) return;
+    try {
+        const db = await openPhotoDB();
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE, 'readwrite');
+            tx.objectStore(STORE).delete(ref);
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+        });
+    } catch (err) {
+        console.error('Failed to delete photo from IDB:', err);
+    }
+}
+
+// Resolve all idb: references on a log entry to their actual data URLs,
+// then call the render function. Used after initial page load to hydrate
+// photo thumbnails progressively without blocking first paint.
+async function hydratePhotosForView() {
+    const refs = new Set();
+    S.logs.forEach(l => {
+        if (l.before && typeof l.before === 'string' && l.before.startsWith('idb:')) refs.add(l.before);
+        if (l.after  && typeof l.after  === 'string' && l.after.startsWith('idb:'))  refs.add(l.after);
+    });
+    if (S.timerBeforePhoto && typeof S.timerBeforePhoto === 'string' && S.timerBeforePhoto.startsWith('idb:')) {
+        refs.add(S.timerBeforePhoto);
+    }
+    if (!refs.size) return;
+    
+    // Load all referenced photos in parallel and stash in a runtime cache.
+    // Views read from this cache via photoSrc() below.
+    const entries = await Promise.all([...refs].map(async ref => [ref, await loadPhoto(ref)]));
+    entries.forEach(([ref, url]) => { _photoCache[ref] = url; });
+    R();
+}
+
+// Runtime cache so views can render photos synchronously. Populated by
+// hydratePhotosForView() on load, and by the upload callbacks.
+const _photoCache = {};
+
+// Helper used inline in views: given a reference (idb: or inline data URL),
+// returns a usable <img src> value. Returns empty string if not yet loaded.
+function photoSrc(ref) {
+    if (!ref) return '';
+    if (typeof ref !== 'string') return '';
+    if (!ref.startsWith('idb:')) return ref; // inline / legacy data URL
+    return _photoCache[ref] || '';
+}
 
 // ── Schema Version & Migrations ──
 // Current schema version. Bump this whenever the shape of saved data changes.
@@ -316,6 +446,7 @@ function load() {
 }
 
 function save() {
+    if (_resetting) return; // Reset in progress — don't undo the wipe.
     try {
         const payload = { ...S, schemaVersion: SCHEMA_VERSION };
         localStorage.setItem(SK, JSON.stringify(payload));
@@ -642,7 +773,14 @@ function R() {
         mod.innerHTML = '';
     }
 
-    if (!S.onboarded) { ct.innerHTML = renderOnboard(); return; }
+   if (!S.onboarded) {
+        ct.innerHTML = renderOnboard();
+        // Wire actions even on the onboarding screen so the "Let's Go" button
+        // responds. Otherwise the early return skips the wireActions() call
+        // at the bottom of R() and the user is stuck.
+        wireActions();
+        return;
+    }
     
     // Content routing mapping
     const fn = { home: renderHome, timer: renderTimer, log: renderLog, tools: renderTools, me: renderMe };
@@ -750,7 +888,35 @@ const ACTIONS = {
     'stop-timer':        ()   => stopTimer(),
     'cancel-timer':      ()   => cancelTimer(),
     'export-data':       ()   => exportData(),
-    'reset-all':         ()   => showConfirm('Reset ALL data?', () => { localStorage.removeItem(SK); location.reload(); })
+    'reset-all':         ()   => showConfirm('Reset ALL data?', async () => {
+        // Flip the reset flag before doing anything. This prevents any
+        // incidental save() calls (including the beforeunload listener
+        // that fires on location.reload) from rewriting the data we're
+        // about to wipe.
+        _resetting = true;
+        // Wipe localStorage so no state survives the reload.
+        localStorage.removeItem(SK);
+        // Wipe the IndexedDB photo store too. Orphaned photos would
+        // otherwise hang around eating storage after a reset.
+        try {
+            // Clear the open connection's transactions before deleting.
+            if (_dbPromise) {
+                const db = await _dbPromise;
+                db.close();
+                _dbPromise = null;
+            }
+            await new Promise((resolve, reject) => {
+                const req = indexedDB.deleteDatabase(DB_NAME);
+                req.onsuccess = resolve;
+                req.onerror   = () => reject(req.error);
+                req.onblocked = resolve; // don't hang if another tab has it open
+            });
+        } catch (err) {
+            console.error('Failed to clear IDB during reset:', err);
+            // Fall through — user expected a reset, still reload.
+        }
+        location.reload();
+    })
 };
 
 // Attach the delegated click listener exactly once. On subsequent renders,
@@ -939,7 +1105,7 @@ function renderTimer() {
             ${rv.before ? `
             <div style="margin-bottom:16px">
                 <div class="lbl">Before Photo</div>
-                <img src="${rv.before}" class="photo-thumb" style="width:80px;height:80px;">
+                <img src="${photoSrc(rv.before)}" class="photo-thumb" style="width:80px;height:80px;">
             </div>` : ''}
 
             <div class="c" style="padding:22px;margin-bottom:16px;border:1px solid rgba(212,132,154,.2)">
@@ -958,7 +1124,7 @@ function renderTimer() {
                         ${_rvAfter ? '✅ Photo Added (Tap to change)' : '📸 Upload After Photo'}
                         <input type="file" accept="image/*" capture="environment" id="rvPA" onchange="rvPhoto()">
                     </label>
-                    <div id="rvPAp" style="margin-top:8px">${_rvAfter ? `<img src="${_rvAfter}" class="photo-thumb">` : ''}</div>
+                   <div id="rvPAp" style="margin-top:8px">${_rvAfter ? `<img src="${photoSrc(_rvAfter)}" class="photo-thumb">` : ''}</div>
                 </div>
 
                 <div style="margin-bottom:18px"><label class="lbl">Notes</label><input class="inp" id="rvNotes" placeholder="How did it go?"></div>
@@ -996,7 +1162,7 @@ function renderTimer() {
                         ${S.timerBeforePhoto ? '✅ Photo Added' : '📸 Upload Before'}
                         <input type="file" accept="image/*" capture="environment" id="tPB" onchange="timerBeforePhoto()">
                     </label>
-                    <div id="tPBp" style="margin-top:8px">${S.timerBeforePhoto ? `<img src="${S.timerBeforePhoto}" class="photo-thumb">` : ''}</div>
+                    <div id="tPBp" style="margin-top:8px">${S.timerBeforePhoto ? `<img src="${photoSrc(S.timerBeforePhoto)}" class="photo-thumb">` : ''}</div>
                 </div>
             </div>
             
@@ -1050,7 +1216,13 @@ function renderTimer() {
 function timerBeforePhoto() {
     const f = document.getElementById('tPB').files[0];
     if(!f) return;
-    compressPhoto(f, d => { S.timerBeforePhoto = d; save(); R(); });
+    compressPhoto(f, async d => {
+        const ref = await savePhoto(d);
+        _photoCache[ref] = d; // cache so it renders immediately
+        S.timerBeforePhoto = ref;
+        save();
+        R();
+    });
 }
 function rvDiff(d) {
     vib(); _rvDf = d;
@@ -1062,7 +1234,12 @@ function rvDiff(d) {
 function rvPhoto() {
     const f = document.getElementById('rvPA').files[0];
     if(!f) return;
-    compressPhoto(f, d => { _rvAfter = d; R(); });
+    compressPhoto(f, async d => {
+        const ref = await savePhoto(d);
+        _photoCache[ref] = d;
+        _rvAfter = ref;
+        R();
+    });
 }
 
 // 4. LOG
@@ -1117,8 +1294,8 @@ function renderLog() {
 
                 ${(l.before || l.after) ? `
                 <div style="display:flex;gap:12px;margin-bottom:12px">
-                    ${l.before ? `<div><div style="font-size:10px;color:var(--di);margin-bottom:4px;font-weight:600;">BEFORE</div><img src="${l.before}" class="photo-thumb" style="width:72px;height:72px;"></div>` : ''}
-                    ${l.after ? `<div><div style="font-size:10px;color:var(--di);margin-bottom:4px;font-weight:600;">AFTER</div><img src="${l.after}" class="photo-thumb" style="width:72px;height:72px;"></div>` : ''}
+                    ${l.before ? `<div><div style="font-size:10px;color:var(--di);margin-bottom:4px;font-weight:600;">BEFORE</div><img src="${photoSrc(l.before)}" class="photo-thumb" style="width:72px;height:72px;"></div>` : ''}
+                    ${l.after ? `<div><div style="font-size:10px;color:var(--di);margin-bottom:4px;font-weight:600;">AFTER</div><img src="${photoSrc(l.after)}" class="photo-thumb" style="width:72px;height:72px;"></div>` : ''}
                 </div>` : ''}
 
                 ${l.notes ? `<div style="font-size:13px;color:var(--di);margin-bottom:12px;font-style:italic">"${esc(l.notes)}"</div>` : ''}
@@ -1203,11 +1380,11 @@ function renderLogForm() {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
             <div><label class="lbl">📸 Before</label>
                 <label class="file-btn">${_phB ? '✅ Change' : '📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="fPB" onchange="hPh('fPB','B')"></label>
-                <div id="pvB" style="margin-top:8px">${_phB ? `<img src="${_phB}" class="photo-thumb">` : ''}</div>
+                <div id="pvB" style="margin-top:8px">${_phB ? `<img src="${photoSrc(_phB)}" class="photo-thumb">` : ''}</div>
             </div>
             <div><label class="lbl">📸 After</label>
                 <label class="file-btn">${_phA ? '✅ Change' : '📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="fPA" onchange="hPh('fPA','A')"></label>
-                <div id="pvA" style="margin-top:8px">${_phA ? `<img src="${_phA}" class="photo-thumb">` : ''}</div>
+                <div id="pvA" style="margin-top:8px">${_phA ? `<img src="${photoSrc(_phA)}" class="photo-thumb">` : ''}</div>
             </div>
         </div>
         
@@ -1222,7 +1399,16 @@ function renderLogForm() {
 
 function pSz(s) { vib(); _sz = s; R(); }
 function pDf(d) { vib(); _df = d; R(); }
-function hPh(iid, w) { const f = document.getElementById(iid).files[0]; if(!f) return; compressPhoto(f, d => { if(w === 'B') _phB = d; else _phA = d; R(); }); }
+function hPh(iid, w) {
+    const f = document.getElementById(iid).files[0];
+    if (!f) return;
+    compressPhoto(f, async d => {
+        const ref = await savePhoto(d);
+        _photoCache[ref] = d;
+        if (w === 'B') _phB = ref; else _phA = ref;
+        R();
+    });
+}
 
 function submitLog() {
     vib();
@@ -1321,11 +1507,11 @@ function renderEditForm() {
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
             <div><label class="lbl">📸 Before</label>
-                ${_edPhB ? `<div style="margin-bottom:8px;position:relative;display:inline-block;"><img src="${_edPhB}" class="photo-thumb"><button data-action="clear-photo-edit" data-which="B" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>` : ''}
+                ${_edPhB ? `<div style="margin-bottom:8px;position:relative;display:inline-block;"><img src="${photoSrc(_edPhB)}" class="photo-thumb"><button data-action="clear-photo-edit" data-which="B" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>` : ''}
                 <label class="file-btn">${_edPhB ? 'Change' : '📸 Upload'}<input type="file" accept="image/*" capture="environment" id="ePB" onchange="ePhH('ePB','B')"></label>
             </div>
             <div><label class="lbl">📸 After</label>
-                ${_edPhA ? `<div style="margin-bottom:8px;position:relative;display:inline-block;"><img src="${_edPhA}" class="photo-thumb"><button data-action="clear-photo-edit" data-which="A" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>` : ''}
+                ${_edPhA ? `<div style="margin-bottom:8px;position:relative;display:inline-block;"><img src="${photoSrc(_edPhA)}" class="photo-thumb"><button data-action="clear-photo-edit" data-which="A" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>` : ''}
                 <label class="file-btn">${_edPhA ? 'Change' : '📸 Upload'}<input type="file" accept="image/*" capture="environment" id="ePA" onchange="ePhH('ePA','A')"></label>
             </div>
         </div>
@@ -1341,7 +1527,16 @@ function renderEditForm() {
 
 function eSz(s) { vib(); _edSz = s; R(); }
 function eDf(d) { vib(); _edDf = d; R(); }
-function ePhH(iid, w) { const f = document.getElementById(iid).files[0]; if(!f) return; compressPhoto(f, d => { if(w === 'B') _edPhB = d; else _edPhA = d; R(); }); }
+function ePhH(iid, w) {
+    const f = document.getElementById(iid).files[0];
+    if (!f) return;
+    compressPhoto(f, async d => {
+        const ref = await savePhoto(d);
+        _photoCache[ref] = d;
+        if (w === 'B') _edPhB = ref; else _edPhA = ref;
+        R();
+    });
+}
 
 function saveEdit() {
     vib();
@@ -1378,7 +1573,19 @@ function saveEdit() {
     S.editId = null; save(); R();
 }
 
-function delLog(id) { showConfirm('Delete this groom record permanently?', () => { S.logs = S.logs.filter(l => l.id !== id); save(); R(); }); }
+function delLog(id) {
+    showConfirm('Delete this groom record permanently?', () => {
+        const log = S.logs.find(l => l.id === id);
+        if (log) {
+            // Free up IDB storage — fire and forget, don't block the UI.
+            if (log.before) deletePhoto(log.before);
+            if (log.after)  deletePhoto(log.after);
+        }
+        S.logs = S.logs.filter(l => l.id !== id);
+        save();
+        R();
+    });
+}
 
 // 5. TOOLS
 function renderTools() {
@@ -1802,7 +2009,7 @@ function renderDogDetail(name) {
                         </div>
                     </div>
                     ${tags.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${tags.map(t => `<span style="background:var(--ca);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--tm)">${t}</span>`).join('')}</div>` : ''}
-                    ${(l.before || l.after) ? `<div style="display:flex;gap:8px;margin-top:8px">${l.before ? `<img src="${l.before}" class="photo-thumb" style="width:48px;height:48px">` : ''} ${l.after ? `<img src="${l.after}" class="photo-thumb" style="width:48px;height:48px">` : ''}</div>` : ''}
+                    ${(l.before || l.after) ? `<div style="display:flex;gap:8px;margin-top:8px">${l.before ? `<img src="${photoSrc(l.before)}" class="photo-thumb" style="width:48px;height:48px">` : ''} ${l.after ? `<img src="${photoSrc(l.after)}" class="photo-thumb" style="width:48px;height:48px">` : ''}</div>` : ''}
                     ${l.notes ? `<div style="font-size:12px;color:var(--di);margin-top:6px;font-style:italic">"${esc(l.notes)}"</div>` : ''}
                 </div>`;
             }).join('')}
@@ -1868,11 +2075,20 @@ function renderStats() {
     </div>`;
 }
 
-function exportData() {
+async function exportData() {
     vib();
     try {
-        // Include schema version in the backup so future versions can migrate.
-        const payload = { ...S, schemaVersion: SCHEMA_VERSION };
+        // Resolve any idb: photo refs back to inline data URLs so the backup
+        // file is self-contained. Someone restoring on another device or
+        // after clearing IDB can still recover their photos.
+        const resolvedLogs = await Promise.all(S.logs.map(async l => ({
+            ...l,
+            before: l.before && l.before.startsWith?.('idb:') ? await loadPhoto(l.before) : l.before,
+            after:  l.after  && l.after.startsWith?.('idb:')  ? await loadPhoto(l.after)  : l.after
+        })));
+        const payload = { ...S, logs: resolvedLogs, schemaVersion: SCHEMA_VERSION };
+        // Don't ship the transient timer photo ref in the backup.
+        delete payload.timerBeforePhoto;
         const json = JSON.stringify(payload);
         // Use a Blob URL rather than data: URL. Data URLs fail on iOS Safari
         // over a certain size. Blob URLs work reliably.
@@ -1884,7 +2100,6 @@ function exportData() {
         document.body.appendChild(a);
         a.click();
         a.remove();
-        // Release the URL after download is triggered.
         setTimeout(() => URL.revokeObjectURL(url), 1000);
         showToast('Backup downloaded 🐾', 'info', 3000);
     } catch (err) {
@@ -1952,7 +2167,7 @@ function importData(e) {
     }
     
     const reader = new FileReader();
-    reader.onload = function(event) {
+    reader.onload = async function(event) {
         try {
             const raw = JSON.parse(event.target.result);
             const clean = sanitizeImport(raw);
@@ -1960,9 +2175,20 @@ function importData(e) {
                 showToast('That file doesn\'t look like a GroomPace backup.', 'error', 6000);
                 return;
             }
+            // Move inline photo data URLs into IDB, replacing with idb: refs.
+            // This keeps localStorage small even after a large restore.
+            for (const log of clean.logs) {
+                if (log.before && log.before.startsWith?.('data:image/')) {
+                    log.before = await savePhoto(log.before);
+                }
+                if (log.after && log.after.startsWith?.('data:image/')) {
+                    log.after = await savePhoto(log.after);
+                }
+            }
             // Apply only the whitelisted fields.
             Object.assign(S, clean);
             save();
+            hydratePhotosForView();
             R();
             showToast(`Restored ${clean.logs.length} grooms 🐾`, 'info', 4000);
         } catch(err) {
@@ -2002,7 +2228,12 @@ window.addEventListener('beforeunload', () => {
 });
 
 // ── Init ──
-load(); R();
+load();
+R();
+// Asynchronously load any photos referenced by logs into the runtime cache,
+// then re-render. First paint happens without photos (fast); they fill in
+// a moment later. This keeps the initial load snappy even with many logs.
+hydratePhotosForView();
 </script>
 </body>
 </html>
