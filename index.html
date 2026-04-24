@@ -465,24 +465,29 @@ function startTimer() {
     save(); tick(); R(); 
 }
 
-function tick() {
-    clearInterval(TI);
-    TI = setInterval(() => {
-        try {
-            const el = document.getElementById('tn');
-            if (el) {
-                el.textContent = fmtT(elapsed());
-            } else if (!S.timerRunning) {
-                // Timer element is gone and we're no longer running — clean up.
-                clearInterval(TI);
-                TI = null;
-            }
-        } catch (err) {
-            console.error('Timer tick error:', err);
+// Update the on-screen timer value once, immediately. Used by both the
+// interval tick and by visibility/pageshow listeners to force-refresh
+// the display after a background period.
+function paintTimer() {
+    try {
+        const el = document.getElementById('tn');
+        if (el) {
+            el.textContent = fmtT(elapsed());
+        } else if (!S.timerRunning) {
+            // Timer element is gone and we're no longer running — clean up.
             clearInterval(TI);
             TI = null;
         }
-    }, 200);
+    } catch (err) {
+        console.error('Timer paint error:', err);
+        clearInterval(TI);
+        TI = null;
+    }
+}
+
+function tick() {
+    clearInterval(TI);
+    TI = setInterval(paintTimer, 200);
 }
 
 function split(label) {
@@ -1970,6 +1975,31 @@ function importData(e) {
     };
     reader.readAsText(file);
 }
+
+// ── Background / Visibility Handling ──
+// When the tab/app goes to the background, browsers throttle setInterval.
+// When it comes back, we force an immediate repaint so the timer display
+// doesn't show a stale value for up to 200ms while the interval catches up.
+// The underlying elapsed time is always correct (computed from timerStart
+// timestamp) — this just makes sure the DOM reflects it the instant the
+// user looks at the screen.
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && S.timerRunning) {
+        paintTimer();
+    }
+});
+
+// iOS Safari sometimes freezes the tab entirely on backgrounding without
+// firing visibilitychange when it wakes. pageshow is the safety net.
+window.addEventListener('pageshow', () => {
+    if (S.timerRunning) paintTimer();
+});
+
+// Also save state when the tab is about to be closed or put away, so any
+// pending changes that haven't been committed through save() yet get flushed.
+window.addEventListener('beforeunload', () => {
+    try { save(); } catch(e) {}
+});
 
 // ── Init ──
 load(); R();
