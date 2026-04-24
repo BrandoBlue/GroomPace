@@ -275,6 +275,18 @@ function load() {
             // Runtime-only fields should never persist across sessions.
             S.timerRunning = false;
             S.timerReview = S.timerReview || null;
+            // UI navigation state should not persist across sessions. The
+            // app always opens to Home so groomers know where they are.
+            S.tab = 'home';
+            S.sub = 'blades';
+            S.sub2 = 'achievements';
+            S.showForm = false;
+            S.editId = null;
+            S.showBreedForm = false;
+            S.editBreedKey = null;
+            S.showStdForm = false;
+            S.editStdId = null;
+            S.viewDog = null;
             // Defensive defaults in case a migration didn't catch something.
             if (!S.breedNotes || typeof S.breedNotes !== 'object') S.breedNotes = {};
             if (!S.goals || typeof S.goals !== 'object') S.goals = { dogsPerDay: 0, avgTarget: 0 };
@@ -580,8 +592,8 @@ function R() {
         { k:'log', i:'✂️', l:'Log' }, { k:'tools', i:'🔧', l:'Tools' },
         { k:'me', i:'👤', l:'Me' }
     ];
-    nv.innerHTML = tabs.map(t => 
-        `<button class="${S.tab === t.k ? 'on' : ''}" onclick="go('${t.k}')">
+    nv.innerHTML = tabs.map(t =>
+        `<button class="${S.tab === t.k ? 'on' : ''}" data-action="go-tab" data-tab="${esc(t.k)}">
             <span class="ni">${t.i}</span><span class="nl">${t.l}</span>
         </button>`
     ).join('');
@@ -593,8 +605,8 @@ function R() {
             <div class="c fi" style="width:100%;max-width:320px;padding:24px;text-align:center;">
                 <div style="font-size:16px;font-weight:600;margin-bottom:20px;line-height:1.5">${esc(_modal.msg)}</div>
                 <div style="display:flex;gap:10px;">
-                    ${_modal.type === 'confirm' ? `<button style="flex:1;padding:14px;border-radius:12px;border:1px solid var(--bd);color:var(--mu);font-weight:600;font-size:15px;" onclick="_modal=null;R()">Cancel</button>` : ''}
-                    <button style="flex:1;padding:14px;border-radius:12px;background:var(--rd);color:var(--wh);font-weight:600;font-size:15px;" onclick="const cb=_modal.onConfirm; _modal=null; R(); if(cb)cb();">OK</button>
+                    ${_modal.type === 'confirm' ? `<button style="flex:1;padding:14px;border-radius:12px;border:1px solid var(--bd);color:var(--mu);font-weight:600;font-size:15px;" id="modalCancel">Cancel</button>` : ''}
+                    <button style="flex:1;padding:14px;border-radius:12px;background:var(--rd);color:var(--wh);font-weight:600;font-size:15px;" id="modalOk">OK</button>
                 </div>
             </div>
         </div>`;
@@ -635,13 +647,106 @@ function R() {
     void ct.offsetWidth;
     ct.classList.add('fade-in');
     
-    updateDatalist();
+   updateDatalist();
     if (S.timerRunning) tick();
+    
+    // Wire up event delegation after each render. One listener on the app
+    // root reads data-action attributes and dispatches to the right handler.
+    // This lets us put user-controlled strings in data-* attributes (safely
+    // auto-escaped by the browser) instead of interpolating into onclick=.
+    wireActions();
 }
 
 function go(t) {
     vib(); S.tab = t; S.showForm = false; S.editId = null; S.viewDog = null; 
     R(); window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+// Maps data-action values to their handler functions.
+// The handler receives the clicked element so it can read data-* attributes.
+const ACTIONS = {
+    'go-tab':            (el) => go(el.dataset.tab),
+    'go-log-form':       ()   => { vib(); S.tab = 'log'; S.showForm = true; R(); },
+    'go-prep':           ()   => { vib(); S.tab = 'me'; S.sub2 = 'checklist'; R(); },
+    'finish-onboard':    ()   => { vib(); S.onboarded = true; save(); R(); },
+    'edit-log':          (el) => editLog(Number(el.dataset.id)),
+    'del-log':           (el) => delLog(Number(el.dataset.id)),
+    'view-dog':          (el) => { vib(); S.viewDog = el.dataset.name; S.tab = 'me'; S.sub2 = 'dogs'; R(); },
+    'view-dog-me':       (el) => { vib(); S.viewDog = el.dataset.name; R(); },
+    'clear-view-dog':    ()   => { vib(); S.viewDog = null; R(); },
+    'edit-breed':        (el) => { vib(); S.editBreedKey = el.dataset.key; R(); },
+    'del-breed':         (el) => delBreed(el.dataset.key),
+    'edit-std':          (el) => { vib(); S.editStdId = el.dataset.id; R(); },
+    'del-std':           (el) => delStd(el.dataset.id),
+    'set-sub':           (el) => { vib(); S.sub = el.dataset.sub; S.showBreedForm=false; S.editBreedKey=null; S.showStdForm=false; S.editStdId=null; R(); },
+    'set-sub2':          (el) => { vib(); S.sub2 = el.dataset.sub2; S.viewDog = null; R(); },
+    'set-size':          (el) => { vib(); S.timerSize = el.dataset.size; save(); R(); },
+    'set-size-form':     (el) => pSz(el.dataset.size),
+    'set-size-edit':     (el) => eSz(el.dataset.size),
+    'set-diff-form':     (el) => pDf(Number(el.dataset.diff)),
+    'set-diff-edit':     (el) => eDf(Number(el.dataset.diff)),
+    'set-rv-diff':       (el) => rvDiff(Number(el.dataset.diff)),
+    'toggle-chk':        (el) => { vib(); const k = el.dataset.key; S.chk[k] = !S.chk[k]; save(); R(); },
+    'show-form':         ()   => { vib(); S.showForm = true; R(); },
+    'cancel-form':       ()   => { vib(); S.showForm = false; _phB = null; _phA = null; R(); },
+    'cancel-edit':       ()   => { vib(); S.editId = null; R(); },
+    'show-breed-form':   ()   => { vib(); S.showBreedForm = true; R(); },
+    'cancel-breed-form': ()   => { vib(); S.showBreedForm = false; S.editBreedKey = null; R(); },
+    'show-std-form':     ()   => { vib(); S.showStdForm = true; R(); },
+    'cancel-std-form':   ()   => { vib(); S.showStdForm = false; S.editStdId = null; R(); },
+    'split':             (el) => split(el.dataset.split),
+    'submit-log':        ()   => submitLog(),
+    'save-edit':         ()   => saveEdit(),
+    'save-breed':        (el) => saveBreedNote(el.dataset.key || null),
+    'save-std':          (el) => saveStd(el.dataset.id || null),
+    'clear-photo-edit':  (el) => { if (el.dataset.which === 'B') _edPhB = null; else _edPhA = null; R(); },
+    'save-review':       ()   => saveReview(),
+    'discard-review':    ()   => discardReview(),
+    'start-timer-setup': ()   => {
+        S.timerDogName = document.getElementById('tDN').value;
+        S.timerBreed = document.getElementById('tB').value;
+        S.timerStyle = document.getElementById('tS').value;
+        startTimer();
+    },
+    'stop-timer':        ()   => stopTimer(),
+    'cancel-timer':      ()   => cancelTimer(),
+    'export-data':       ()   => exportData(),
+    'reset-all':         ()   => showConfirm('Reset ALL data?', () => { localStorage.removeItem(SK); location.reload(); })
+};
+
+// Attach the delegated click listener exactly once. On subsequent renders,
+// the listener stays in place; we just re-bind the modal buttons since they
+// are recreated fresh each render.
+let _actionsWired = false;
+function wireActions() {
+    if (!_actionsWired) {
+        _actionsWired = true;
+        document.addEventListener('click', (e) => {
+            const el = e.target.closest('[data-action]');
+            if (!el) return;
+            const action = el.dataset.action;
+            const handler = ACTIONS[action];
+            if (handler) {
+                e.preventDefault();
+                try {
+                    handler(el);
+                } catch (err) {
+                    console.error(`Action "${action}" failed:`, err);
+                    showToast('Something went wrong. Try again.', 'error');
+                }
+            }
+        });
+    }
+    // Modal buttons get freshly wired each render since they're recreated.
+    const cancelBtn = document.getElementById('modalCancel');
+    if (cancelBtn) cancelBtn.onclick = () => { _modal = null; R(); };
+    const okBtn = document.getElementById('modalOk');
+    if (okBtn) okBtn.onclick = () => {
+        const cb = _modal && _modal.onConfirm;
+        _modal = null;
+        R();
+        if (cb) cb();
+    };
 }
 
 // ════ VIEWS ════
@@ -666,7 +771,7 @@ function renderOnboard() {
             ].map(f => `<div style="font-size:15px;color:var(--tm);display:flex;align-items:center;">${f}</div>`).join('')}
         </div>
         
-        <button onclick="vib(); S.onboarded=true; save(); R()" style="width:100%;max-width:280px;padding:18px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:16px;color:var(--wh);font-size:17px;font-weight:600;box-shadow:0 8px 24px rgba(212,132,154,.35)">Let's Go 🐾</button>
+        <button data-action="finish-onboard" style="width:100%;max-width:280px;padding:18px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:16px;color:var(--wh);font-size:17px;font-weight:600;box-shadow:0 8px 24px rgba(212,132,154,.35)">Let's Go 🐾</button>
         <p style="font-size:12px;color:var(--di);margin-top:20px">Free forever · All data stays on your phone</p>
     </div>`;
 }
@@ -708,11 +813,11 @@ function renderHome() {
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-            <button onclick="go('timer')" style="background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:var(--r);padding:22px 16px;color:var(--wh);text-align:left;box-shadow:0 8px 24px rgba(212,132,154,.3)">
+            <button data-action="go-tab" data-tab="timer" style="background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:var(--r);padding:22px 16px;color:var(--wh);text-align:left;box-shadow:0 8px 24px rgba(212,132,154,.3)">
                 <div style="font-size:26px;margin-bottom:10px">⏱️</div>
                 <div style="font-size:16px;font-weight:600">Start Timer</div>
             </button>
-            <button class="c" onclick="go('log');setTimeout(()=>{vib();S.showForm=true;R()},50)" style="border:1px solid var(--bd);border-radius:var(--r);padding:22px 16px;text-align:left">
+            <button class="c" data-action="go-log-form" style="border:1px solid var(--bd);border-radius:var(--r);padding:22px 16px;text-align:left">
                 <div style="font-size:26px;margin-bottom:10px">✂️</div>
                 <div style="font-size:16px;font-weight:600;color:var(--tx)">Log Groom</div>
             </button>
@@ -733,11 +838,11 @@ function renderHome() {
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
-            <div class="c" style="padding:16px;cursor:pointer" onclick="go('me')">
+            <div class="c" style="padding:16px;cursor:pointer" data-action="go-tab" data-tab="me">
                 <div style="font-size:10px;letter-spacing:1.5px;color:var(--hn);text-transform:uppercase;font-weight:600;margin-bottom:6px">🏆 Milestones</div>
                 <div style="font-size:15px;font-weight:500">${earned}/${ACH.length}</div>
             </div>
-            <div class="c" style="padding:16px;cursor:pointer" onclick="vib();S.tab='me';S.sub2='checklist';R()">
+            <div class="c" style="padding:16px;cursor:pointer" data-action="go-prep">
                 <div style="font-size:10px;letter-spacing:1.5px;color:var(--sg);text-transform:uppercase;font-weight:600;margin-bottom:6px">✅ Prep</div>
                 <div style="font-size:15px;font-weight:500">${todayDone}/${CHK.length}</div>
             </div>
@@ -803,9 +908,9 @@ function renderTimer() {
                 
                 <div style="margin-bottom:16px"><label class="lbl">Difficulty</label>
                     <div style="display:flex;gap:8px" id="rvDf">
-                        <button class="diff-btn on-1" style="flex:1;" onclick="rvDiff(1)">🟢 Easy</button>
-                        <button class="diff-btn" style="flex:1;" onclick="rvDiff(2)">🟡 Mod</button>
-                        <button class="diff-btn" style="flex:1;" onclick="rvDiff(3)">🔴 Hard</button>
+                        <button class="diff-btn on-1" style="flex:1;" data-action="set-rv-diff" data-diff="1">🟢 Easy</button>
+                        <button class="diff-btn" style="flex:1;" data-action="set-rv-diff" data-diff="2">🟡 Mod</button>
+                        <button class="diff-btn" style="flex:1;" data-action="set-rv-diff" data-diff="3">🔴 Hard</button>
                     </div>
                 </div>
 
@@ -820,8 +925,8 @@ function renderTimer() {
                 <div style="margin-bottom:18px"><label class="lbl">Notes</label><input class="inp" id="rvNotes" placeholder="How did it go?"></div>
                 
                 <div style="display:flex;gap:12px">
-                    <button onclick="saveReview()" style="flex:1;padding:16px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(212,132,154,.35)">Save 🐾</button>
-                    <button onclick="discardReview()" style="padding:16px 20px;border:1px solid var(--bd);border-radius:14px;color:var(--mu);font-size:15px;font-weight:500;">Discard</button>
+                    <button data-action="save-review" style="flex:1;padding:16px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(212,132,154,.35)">Save 🐾</button>
+                    <button data-action="discard-review" style="padding:16px 20px;border:1px solid var(--bd);border-radius:14px;color:var(--mu);font-size:15px;font-weight:500;">Discard</button>
                 </div>
             </div>
         </div>`;
@@ -843,7 +948,7 @@ function renderTimer() {
                     <div><label class="lbl">Style</label><input class="inp" id="tS" placeholder="e.g. Teddy bear" value="${esc(S.timerStyle)}"></div>
                     <div><label class="lbl">Size</label>
                         <div style="display:flex;gap:6px">
-                            ${['small','medium','large'].map(s => `<button class="pill ${S.timerSize === s ? 'on' : ''}" style="flex:1;padding:14px 4px;" onclick="vib();S.timerSize='${s}';save();R()">${s}</button>`).join('')}
+                            ${['small','medium','large'].map(s => `<button class="pill ${S.timerSize === s ? 'on' : ''}" style="flex:1;padding:14px 4px;" data-action="set-size" data-size="${s}">${s}</button>`).join('')}
                         </div>
                     </div>
                 </div>
@@ -856,7 +961,7 @@ function renderTimer() {
                 </div>
             </div>
             
-            <button onclick="S.timerDogName=document.getElementById('tDN').value;S.timerBreed=document.getElementById('tB').value;S.timerStyle=document.getElementById('tS').value;startTimer()" style="width:100%;padding:20px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:16px;color:var(--wh);font-size:18px;font-weight:600;box-shadow:0 8px 24px rgba(212,132,154,.35)">▶ Start Timer</button>
+            <button data-action="start-timer-setup" style="width:100%;padding:20px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:16px;color:var(--wh);font-size:18px;font-weight:600;box-shadow:0 8px 24px rgba(212,132,154,.35)">▶ Start Timer</button>
         </div>`;
     }
 
@@ -879,7 +984,8 @@ function renderTimer() {
         <div style="display:flex;gap:8px;justify-content:center;margin:24px 0;flex-wrap:wrap;max-width:340px;margin-left:auto;margin-right:auto;">
             ${splitBtns.map(s => {
                 const d = done.includes(s.l);
-                return `<button onclick="${run && !d ? `split('${s.l}')` : ''}" style="padding:10px 14px;border-radius:12px;font-size:13px;font-weight:600;${d ? 'background:var(--ss);color:var(--sg);' : 'background:var(--card);border:1px solid var(--bd);color:var(--tm);box-shadow:var(--sh);'} ${!run || d ? 'opacity:.5;' : ''}">${s.e} ${s.t}${d ? ' ✓' : ''}</button>`;
+                const clickable = run && !d;
+                return `<button ${clickable ? `data-action="split" data-split="${esc(s.l)}"` : ''} style="padding:10px 14px;border-radius:12px;font-size:13px;font-weight:600;${d ? 'background:var(--ss);color:var(--sg);' : 'background:var(--card);border:1px solid var(--bd);color:var(--tm);box-shadow:var(--sh);'} ${!clickable ? 'opacity:.5;' : ''}">${s.e} ${s.t}${d ? ' ✓' : ''}</button>`;
             }).join('')}
         </div>
         
@@ -896,8 +1002,8 @@ function renderTimer() {
         </div>` : ''}
         
         <div style="display:flex;gap:12px;justify-content:center;margin-top:auto;">
-            <button onclick="stopTimer()" style="flex:2;padding:18px;background:var(--sg);border-radius:16px;color:var(--wh);font-size:17px;font-weight:600;box-shadow:0 6px 20px rgba(123,175,142,.3)">⏹ Done</button>
-            <button onclick="cancelTimer()" style="flex:1;padding:18px;border:1px solid var(--bd);border-radius:16px;color:var(--mu);font-size:16px;font-weight:500;">Cancel</button>
+            <button data-action="stop-timer" style="flex:2;padding:18px;background:var(--sg);border-radius:16px;color:var(--wh);font-size:17px;font-weight:600;box-shadow:0 6px 20px rgba(123,175,142,.3)">⏹ Done</button>
+            <button data-action="cancel-timer" style="flex:1;padding:18px;border:1px solid var(--bd);border-radius:16px;color:var(--mu);font-size:16px;font-weight:500;">Cancel</button>
         </div>
     </div>`;
 }
@@ -934,7 +1040,7 @@ function renderLog() {
         <p style="font-size:14px;color:var(--mu);margin-bottom:24px">All your tracked grooms.</p>
         
         ${S.editId ? renderEditForm() : S.showForm ? renderLogForm() : `
-        <button onclick="vib();S.showForm=true;R()" style="width:100%;padding:20px;background:var(--rg);border:2px dashed rgba(212,132,154,.35);border-radius:var(--r);color:var(--rd);font-size:16px;font-weight:600;margin-bottom:20px">🐾 Log a Groom Manually</button>`}
+        <button data-action="show-form" style="width:100%;padding:20px;background:var(--rg);border:2px dashed rgba(212,132,154,.35);border-radius:var(--r);color:var(--rd);font-size:16px;font-weight:600;margin-bottom:20px">🐾 Log a Groom Manually</button>`}
         
         ${S.logs.length === 0 && !S.showForm && !S.editId ? `
         <div style="text-align:center;padding:60px 20px"><div style="font-size:56px;margin-bottom:16px">✂️</div><div style="font-size:16px;color:var(--tm);font-weight:500">No grooms yet</div></div>` : `
@@ -981,9 +1087,9 @@ function renderLog() {
                 <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid var(--bl)">
                     <span style="font-size:12px;color:var(--di)">${esc(l.date)}</span>
                     <div>
-                        ${cmp ? `<button onclick="vib();S.viewDog='${esc(l.dogName)}';S.tab='me';S.sub2='dogs';R()" style="font-size:13px;color:var(--lv);margin-right:16px;font-weight:600">History (${hist.length})</button>` : ''}
-                        <button onclick="editLog(${l.id})" style="font-size:13px;color:var(--ro);margin-right:16px;font-weight:600">Edit</button>
-                        <button onclick="delLog(${l.id})" style="font-size:13px;color:var(--di)">Delete</button>
+                        ${cmp ? `<button data-action="view-dog" data-name="${esc(l.dogName)}" style="font-size:13px;color:var(--lv);margin-right:16px;font-weight:600">History (${hist.length})</button>` : ''}
+                        <button data-action="edit-log" data-id="${l.id}" style="font-size:13px;color:var(--ro);margin-right:16px;font-weight:600">Edit</button>
+                        <button data-action="del-log" data-id="${l.id}" style="font-size:13px;color:var(--di)">Delete</button>
                     </div>
                 </div>
             </div>`;
@@ -1031,16 +1137,16 @@ function renderLogForm() {
             <div><label class="lbl">Style</label><input class="inp" id="fSt" placeholder="e.g. Teddy bear"></div>
             <div><label class="lbl">Size</label>
                 <div style="display:flex;gap:6px" id="szB">
-                    ${['small','medium','large'].map(s => `<button class="pill ${_sz===s?'on':''}" style="flex:1;padding:12px 2px;" onclick="pSz('${s}')">${s}</button>`).join('')}
+                    ${['small','medium','large'].map(s => `<button class="pill ${_sz===s?'on':''}" style="flex:1;padding:12px 2px;" data-action="set-size-form" data-size="${s}">${s}</button>`).join('')}
                 </div>
             </div>
         </div>
 
         <div style="margin-bottom:16px"><label class="lbl">Difficulty</label>
             <div style="display:flex;gap:6px" id="dfB">
-                <button class="diff-btn ${_df===1?'on-1':''}" style="flex:1" onclick="pDf(1)">🟢</button>
-                <button class="diff-btn ${_df===2?'on-2':''}" style="flex:1" onclick="pDf(2)">🟡</button>
-                <button class="diff-btn ${_df===3?'on-3':''}" style="flex:1" onclick="pDf(3)">🔴</button>
+                <button class="diff-btn ${_df===1?'on-1':''}" style="flex:1" data-action="set-diff-form" data-diff="1">🟢</button>
+                <button class="diff-btn ${_df===2?'on-2':''}" style="flex:1" data-action="set-diff-form" data-diff="2">🟡</button>
+                <button class="diff-btn ${_df===3?'on-3':''}" style="flex:1" data-action="set-diff-form" data-diff="3">🔴</button>
             </div>
         </div>
         
@@ -1069,8 +1175,8 @@ function renderLogForm() {
         <div style="margin-bottom:20px"><label class="lbl">Notes</label><input class="inp" id="fN" placeholder="Optional notes"></div>
         
         <div style="display:flex;gap:12px">
-            <button onclick="submitLog()" style="flex:2;padding:16px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(212,132,154,.35)">Save 🐾</button>
-            <button onclick="vib();S.showForm=false;_phB=null;_phA=null;R()" style="flex:1;padding:16px;border:1px solid var(--bd);border-radius:14px;color:var(--mu);font-size:15px;font-weight:500;">Cancel</button>
+            <button data-action="submit-log" style="flex:2;padding:16px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(212,132,154,.35)">Save 🐾</button>
+            <button data-action="cancel-form" style="flex:1;padding:16px;border:1px solid var(--bd);border-radius:14px;color:var(--mu);font-size:15px;font-weight:500;">Cancel</button>
         </div>
     </div>`;
 }
@@ -1150,16 +1256,16 @@ function renderEditForm() {
             <div><label class="lbl">Style</label><input class="inp" id="eSt" value="${esc(l.style || '')}"></div>
             <div><label class="lbl">Size</label>
                 <div style="display:flex;gap:6px" id="edSzB">
-                    ${['small','medium','large'].map(s => `<button class="pill ${_edSz===s?'on':''}" style="flex:1;padding:12px 2px;" onclick="eSz('${s}')">${s}</button>`).join('')}
+                    ${['small','medium','large'].map(s => `<button class="pill ${_edSz===s?'on':''}" style="flex:1;padding:12px 2px;" data-action="set-size-edit" data-size="${s}">${s}</button>`).join('')}
                 </div>
             </div>
         </div>
         
         <div style="margin-bottom:16px"><label class="lbl">Difficulty</label>
             <div style="display:flex;gap:6px" id="edDfB">
-                <button class="diff-btn ${_edDf===1?'on-1':''}" style="flex:1;" onclick="eDf(1)">🟢</button>
-                <button class="diff-btn ${_edDf===2?'on-2':''}" style="flex:1;" onclick="eDf(2)">🟡</button>
-                <button class="diff-btn ${_edDf===3?'on-3':''}" style="flex:1;" onclick="eDf(3)">🔴</button>
+                <button class="diff-btn ${_edDf===1?'on-1':''}" style="flex:1;" data-action="set-diff-edit" data-diff="1">🟢</button>
+                <button class="diff-btn ${_edDf===2?'on-2':''}" style="flex:1;" data-action="set-diff-edit" data-diff="2">🟡</button>
+                <button class="diff-btn ${_edDf===3?'on-3':''}" style="flex:1;" data-action="set-diff-edit" data-diff="3">🔴</button>
             </div>
         </div>
         
@@ -1176,11 +1282,11 @@ function renderEditForm() {
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
             <div><label class="lbl">📸 Before</label>
-                ${_edPhB ? `<div style="margin-bottom:8px;position:relative;display:inline-block;"><img src="${_edPhB}" class="photo-thumb"><button onclick="_edPhB=null;R();" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>` : ''}
+                ${_edPhB ? `<div style="margin-bottom:8px;position:relative;display:inline-block;"><img src="${_edPhB}" class="photo-thumb"><button data-action="clear-photo-edit" data-which="B" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>` : ''}
                 <label class="file-btn">${_edPhB ? 'Change' : '📸 Upload'}<input type="file" accept="image/*" capture="environment" id="ePB" onchange="ePhH('ePB','B')"></label>
             </div>
             <div><label class="lbl">📸 After</label>
-                ${_edPhA ? `<div style="margin-bottom:8px;position:relative;display:inline-block;"><img src="${_edPhA}" class="photo-thumb"><button onclick="_edPhA=null;R();" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>` : ''}
+                ${_edPhA ? `<div style="margin-bottom:8px;position:relative;display:inline-block;"><img src="${_edPhA}" class="photo-thumb"><button data-action="clear-photo-edit" data-which="A" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>` : ''}
                 <label class="file-btn">${_edPhA ? 'Change' : '📸 Upload'}<input type="file" accept="image/*" capture="environment" id="ePA" onchange="ePhH('ePA','A')"></label>
             </div>
         </div>
@@ -1188,8 +1294,8 @@ function renderEditForm() {
         <div style="margin-bottom:20px"><label class="lbl">Notes</label><input class="inp" id="eN" placeholder="Notes" value="${esc(l.notes || '')}"></div>
         
         <div style="display:flex;gap:12px">
-            <button onclick="saveEdit()" style="flex:2;padding:16px;background:var(--sg);border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(123,175,142,.3)">Save Changes ✓</button>
-            <button onclick="vib();S.editId=null;R()" style="flex:1;padding:16px;border:1px solid var(--bd);border-radius:14px;color:var(--mu);font-size:15px;font-weight:500;">Cancel</button>
+            <button data-action="save-edit" style="flex:2;padding:16px;background:var(--sg);border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(123,175,142,.3)">Save Changes ✓</button>
+            <button data-action="cancel-edit" style="flex:1;padding:16px;border:1px solid var(--bd);border-radius:14px;color:var(--mu);font-size:15px;font-weight:500;">Cancel</button>
         </div>
     </div>`;
 }
@@ -1247,7 +1353,7 @@ function renderTools() {
                 {k:'breeds', l:'🐕 Breeds'},
                 {k:'standards', l:'⏱️ Standards'},
                 {k:'goals', l:'🎯 Goals'}
-            ].map(t => `<button class="sub-tab ${sub === t.k ? 'on' : ''}" style="flex:1;padding:12px 14px;text-align:center;min-width:90px;" onclick="vib();S.sub='${t.k}';S.showBreedForm=false;S.editBreedKey=null;S.showStdForm=false;S.editStdId=null;R()">${t.l}</button>`).join('')}
+            ].map(t => `<button class="sub-tab ${sub === t.k ? 'on' : ''}" style="flex:1;padding:12px 14px;text-align:center;min-width:90px;" data-action="set-sub" data-sub="${esc(t.k)}">${t.l}</button>`).join('')}
         </div>
         ${sub === 'blades' ? renderBlades() : sub === 'breeds' ? renderBreeds() : sub === 'standards' ? renderStandards() : renderGoals()}
     </div>`;
@@ -1313,7 +1419,7 @@ function renderStandards() {
     <div class="c" style="padding:20px;margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
             <div style="font-size:11px;letter-spacing:1.5px;color:var(--co);text-transform:uppercase;font-weight:600">⏱️ Salon Standards</div>
-            ${!showForm && !editId ? `<button onclick="vib();S.showStdForm=true;R()" style="padding:8px 16px;background:var(--cs);border:1px solid var(--co);border-radius:10px;color:var(--co);font-size:13px;font-weight:600">+ Add Standard</button>` : ''}
+            ${!showForm && !editId ? `<button data-action="show-std-form" style="padding:8px 16px;background:var(--cs);border:1px solid var(--co);border-radius:10px;color:var(--co);font-size:13px;font-weight:600">+ Add Standard</button>` : ''}
         </div>
         
         ${showForm ? renderStdForm(null) : ''}
@@ -1416,8 +1522,8 @@ function renderBreeds() {
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                     <span style="font-size:16px;font-weight:600;text-transform:capitalize;color:var(--tx)">${esc(b)}</span>
                     <div>
-                        <button onclick="vib();S.editBreedKey='${esc(b)}';R()" style="font-size:13px;color:var(--ro);margin-right:12px;font-weight:600;">Edit</button>
-                        <button onclick="delBreed('${esc(b)}')" style="font-size:16px;color:var(--di);font-weight:bold;">×</button>
+                        <button data-action="edit-breed" data-key="${esc(b)}" style="font-size:13px;color:var(--ro);margin-right:12px;font-weight:600;">Edit</button>
+                        <button data-action="del-breed" data-key="${esc(b)}" style="font-size:16px;color:var(--di);font-weight:bold;">×</button>
                     </div>
                 </div>
                 
@@ -1450,8 +1556,8 @@ function renderBreedForm(existingKey) {
         <div style="margin-bottom:16px"><label class="lbl">Style Notes / Tips</label><input class="inp" id="bnNotes" placeholder="e.g. Round head, fuller legs" value="${esc(n.notes)}"></div>
         
         <div style="display:flex;gap:12px">
-            <button onclick="saveBreedNote(${isEdit ? `'${esc(existingKey)}'` : 'null'})" style="flex:2;padding:14px;background:${isEdit ? 'var(--lv)' : 'var(--ro)'};border-radius:12px;color:var(--wh);font-size:14px;font-weight:600">${isEdit ? 'Save Changes' : 'Add Breed'}</button>
-            <button onclick="vib();S.showBreedForm=false;S.editBreedKey=null;R()" style="flex:1;padding:14px 16px;border:1px solid var(--bd);border-radius:12px;color:var(--mu);font-size:14px;font-weight:500;">Cancel</button>
+            <button data-action="save-breed" ${isEdit ? `data-key="${esc(existingKey)}"` : ''} style="flex:2;padding:14px;background:${isEdit ? 'var(--lv)' : 'var(--ro)'};border-radius:12px;color:var(--wh);font-size:14px;font-weight:600">${isEdit ? 'Save Changes' : 'Add Breed'}</button>
+            <button data-action="cancel-breed-form" style="flex:1;padding:14px 16px;border:1px solid var(--bd);border-radius:12px;color:var(--mu);font-size:14px;font-weight:500;">Cancel</button>
         </div>
     </div>`;
 }
@@ -1507,7 +1613,7 @@ function renderMe() {
                 {k:'dogs', l:'🐕 Dogs'},
                 {k:'checklist', l:'✅ Prep'},
                 {k:'stats', l:'📊 Stats'}
-            ].map(t => `<button class="sub-tab ${sub === t.k ? 'on' : ''}" style="flex:1;padding:12px 6px;text-align:center;min-width:70px;" onclick="vib();S.sub2='${t.k}';S.viewDog=null;R()">${t.l}</button>`).join('')}
+            ].map(t => `<button class="sub-tab ${sub === t.k ? 'on' : ''}" style="flex:1;padding:12px 6px;text-align:center;min-width:70px;" data-action="set-sub2" data-sub2="${esc(t.k)}">${t.l}</button>`).join('')}
         </div>
         ${sub === 'achievements' ? renderAch() : sub === 'dogs' ? renderDogs() : sub === 'checklist' ? renderChecklist() : renderStats()}
     </div>`;
@@ -1558,7 +1664,7 @@ function renderDogs() {
         ${rpt.length ? `
         <div style="font-size:12px;color:var(--mu);margin-bottom:12px;font-weight:600">RETURNING CLIENTS (${rpt.length})</div>
         ${rpt.map(d => `
-        <button onclick="vib();S.viewDog='${esc(d.name)}';R()" style="width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid var(--bl);text-align:left">
+        <button data-action="view-dog-me" data-name="${esc(d.name)}" style="width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid var(--bl);text-align:left">
             <div>
                 <div style="font-size:15px;font-weight:600;color:var(--tx)">${esc(d.name)}</div>
                 <div style="font-size:12px;color:var(--mu)">${esc(d.breed)} · ${d.count} visits</div>
@@ -1599,7 +1705,7 @@ function renderDogDetail(name) {
 
     return `
     <div>
-        <button onclick="vib();S.viewDog=null;R()" style="display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ro);font-weight:600;margin-bottom:16px">← All Dogs</button>
+        <button data-action="clear-view-dog" style="display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ro);font-weight:600;margin-bottom:16px">← All Dogs</button>
         
         <div class="c" style="padding:20px;margin-bottom:16px">
             <div style="text-align:center;margin-bottom:16px">
@@ -1674,7 +1780,7 @@ function renderChecklist() {
             const k = d + '_' + item.id, on = !!S.chk[k];
             return `
             <div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--bl)">
-                <button class="chk ${on ? 'on' : ''}" onclick="vib();S.chk['${k}']=!S.chk['${k}'];save();R()">${on ? '✓' : ''}</button>
+                <button class="chk ${on ? 'on' : ''}" data-action="toggle-chk" data-key="${esc(k)}">${on ? '✓' : ''}</button>
                 <span style="font-size:15px;color:${on ? 'var(--di)' : 'var(--tx)'};${on ? 'text-decoration:line-through' : ''}">${item.t}</span>
             </div>`;
         }).join('')}
@@ -1711,7 +1817,7 @@ function renderStats() {
     <div class="c" style="padding:20px;margin-bottom:20px">
         <div style="font-size:11px;letter-spacing:1.5px;color:var(--di);text-transform:uppercase;font-weight:600;margin-bottom:14px">💾 Backup</div>
         <div style="display:flex;gap:10px;margin-bottom:10px">
-            <button onclick="exportData()" style="flex:1;padding:12px;background:var(--ca);border-radius:10px;color:var(--tx);font-size:13px;font-weight:600;border:1px solid var(--bd)">⬇️ Save</button>
+            <button data-action="export-data" style="flex:1;padding:12px;background:var(--ca);border-radius:10px;color:var(--tx);font-size:13px;font-weight:600;border:1px solid var(--bd)">⬇️ Save</button>
             <label style="flex:1;padding:12px;background:var(--ca);border-radius:10px;color:var(--tx);font-size:13px;font-weight:600;border:1px solid var(--bd);text-align:center;cursor:pointer">
                 ⬆️ Restore<input type="file" accept=".json" style="display:none" onchange="importData(event)">
             </label>
@@ -1719,7 +1825,7 @@ function renderStats() {
     </div>
     
     <div style="text-align:center;padding:10px 20px 40px">
-        <button onclick="showConfirm('Reset ALL data?', () => { localStorage.removeItem(SK); location.reload(); })" style="font-size:13px;color:var(--di);text-decoration:underline;padding:10px">Reset All Data</button>
+        <button data-action="reset-all" style="font-size:13px;color:var(--di);text-decoration:underline;padding:10px">Reset All Data</button>
     </div>`;
 }
 
