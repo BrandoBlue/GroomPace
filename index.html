@@ -196,19 +196,94 @@ let S = {
 let TI = null;
 let _modal = null;
 
+// ── Schema Version & Migrations ──
+// Current schema version. Bump this whenever the shape of saved data changes.
+// Then add a migration function to MIGRATIONS below that transforms data
+// from the previous version into the new shape.
+const SCHEMA_VERSION = 4;
+
+// Migrations run in order. Each function receives the state and returns
+// the migrated state. Functions are keyed by the version they migrate TO.
+// Example: MIGRATIONS[5] transforms v4 data into v5 data.
+const MIGRATIONS = {
+    // Migration to v4: baseline cleanup of any pre-versioned data.
+    // Ensures all expected fields exist on every log entry.
+    4: (state) => {
+        if (Array.isArray(state.logs)) {
+            state.logs = state.logs.map(log => ({
+                id: log.id || Date.now() + Math.random(),
+                ts: log.ts || Date.now(),
+                date: log.date || '',
+                dogName: log.dogName || '',
+                breed: log.breed || '',
+                style: log.style || '',
+                size: log.size || 'medium',
+                min: log.min || 0,
+                pw: log.pw || 0, bo: log.bo || 0, bs: log.bs || 0,
+                sl: log.sl || 0, hf: log.hf || 0, ta: log.ta || 0, fi: log.fi || 0,
+                diff: log.diff || 1,
+                notes: log.notes || '',
+                timed: !!log.timed,
+                before: log.before || null,
+                after: log.after || null
+            }));
+        }
+        return state;
+    }
+    // Future migrations go here. Example:
+    // 5: (state) => { ... transform v4 shape to v5 shape ... return state; }
+};
+
+// Runs all necessary migrations to bring old data up to the current version.
+function migrate(state) {
+    const fromVersion = state.schemaVersion || 3; // pre-versioned data is treated as v3
+    
+    if (fromVersion > SCHEMA_VERSION) {
+        // Data is from a NEWER version than this app. This happens if user
+        // downgrades. Safest thing is to not touch it and hope for the best.
+        console.warn('Saved data is newer than app. Skipping migrations.');
+        return state;
+    }
+    
+    for (let v = fromVersion + 1; v <= SCHEMA_VERSION; v++) {
+        if (MIGRATIONS[v]) {
+            try {
+                state = MIGRATIONS[v](state);
+                console.log(`Migrated data to v${v}`);
+            } catch (e) {
+                console.error(`Migration to v${v} failed:`, e);
+                // Continue with other migrations rather than blocking the user.
+            }
+        }
+    }
+    
+    state.schemaVersion = SCHEMA_VERSION;
+    return state;
+}
+
 // ── Initialization & Storage ──
 function load() {
     try {
-        const d = JSON.parse(localStorage.getItem(SK));
-        if (d) {
-            Object.assign(S, d);
+        const raw = localStorage.getItem(SK);
+        if (raw) {
+            let data = JSON.parse(raw);
+            // Run migrations before merging into live state.
+            data = migrate(data);
+            Object.assign(S, data);
+            // Runtime-only fields should never persist across sessions.
             S.timerRunning = false;
             S.timerReview = S.timerReview || null;
+            // Defensive defaults in case a migration didn't catch something.
             if (!S.breedNotes) S.breedNotes = {};
             if (!S.goals) S.goals = { dogsPerDay: 0, avgTarget: 0 };
             if (!S.standards) S.standards = [];
         }
-    } catch(e) {}
+    } catch(e) {
+        console.error('Failed to load saved data:', e);
+        // Continue with default state. User won't lose existing data in
+        // localStorage — next save will overwrite, but only if we successfully
+        // start up, so they can still export-and-restore manually if needed.
+    }
     
     if (S.standards.length === 0) {
         S.standards.push({
@@ -221,8 +296,16 @@ function load() {
 }
 
 function save() {
-    try { localStorage.setItem(SK, JSON.stringify({ ...S })); } 
-    catch(e) {}
+    try {
+        // Always write the current schema version so migrations can detect
+        // old data on future loads.
+        const payload = { ...S, schemaVersion: SCHEMA_VERSION };
+        localStorage.setItem(SK, JSON.stringify(payload));
+    } catch(e) {
+        console.error('Failed to save:', e);
+        // Quota errors and other failures will be handled in a later step
+        // (Step 2) with a user-visible toast.
+    }
 }
 
 // ── Utility Helpers ──
