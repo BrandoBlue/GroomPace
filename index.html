@@ -586,6 +586,22 @@ function updateDatalist() {
 function R() {
     const ct = document.getElementById('ct'), nv = document.getElementById('nv'), mod = document.getElementById('modalRoot');
     
+// Snapshot values of any form inputs currently in the DOM before we
+    // blow them away with innerHTML. After the render, we restore them.
+    // This prevents form fields from resetting when the user taps a size
+    // or difficulty pill while partway through typing.
+    const inputSnapshot = {};
+    const focusedId = document.activeElement ? document.activeElement.id : null;
+    let selStart = null, selEnd = null;
+    document.querySelectorAll('#ct input, #ct textarea').forEach(inp => {
+        if (inp.id) {
+            inputSnapshot[inp.id] = inp.value;
+            if (inp === document.activeElement) {
+                try { selStart = inp.selectionStart; selEnd = inp.selectionEnd; } catch(e) {}
+            }
+        }
+    });
+
     // Navigation Render
     const tabs = [
         { k:'home', i:'🏠', l:'Home' }, { k:'timer', i:'⏱️', l:'Timer' },
@@ -652,9 +668,27 @@ function R() {
     
     // Wire up event delegation after each render. One listener on the app
     // root reads data-action attributes and dispatches to the right handler.
-    // This lets us put user-controlled strings in data-* attributes (safely
-    // auto-escaped by the browser) instead of interpolating into onclick=.
     wireActions();
+    
+    // Restore any input values we snapshotted before the re-render, so
+    // typing in a form isn't wiped when the user taps size/difficulty pills
+    // or any other control that triggers a re-render.
+    Object.keys(inputSnapshot).forEach(id => {
+        const inp = document.getElementById(id);
+        if (inp && inp.value !== inputSnapshot[id]) {
+            inp.value = inputSnapshot[id];
+        }
+    });
+    // Restore focus and cursor position on whichever field had it.
+    if (focusedId) {
+        const focused = document.getElementById(focusedId);
+        if (focused) {
+            focused.focus();
+            if (selStart !== null && typeof focused.setSelectionRange === 'function') {
+                try { focused.setSelectionRange(selStart, selEnd); } catch(e) {}
+            }
+        }
+    }
 }
 
 function go(t) {
