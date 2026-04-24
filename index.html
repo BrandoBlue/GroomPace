@@ -195,6 +195,8 @@ let S = {
 
 let TI = null;
 let _modal = null;
+let _toast = null;
+let _toastTimer = null;
 
 // ── Schema Version & Migrations ──
 // Current schema version. Bump this whenever the shape of saved data changes.
@@ -297,14 +299,20 @@ function load() {
 
 function save() {
     try {
-        // Always write the current schema version so migrations can detect
-        // old data on future loads.
         const payload = { ...S, schemaVersion: SCHEMA_VERSION };
         localStorage.setItem(SK, JSON.stringify(payload));
     } catch(e) {
         console.error('Failed to save:', e);
-        // Quota errors and other failures will be handled in a later step
-        // (Step 2) with a user-visible toast.
+        // QuotaExceededError is the most common failure — storage is full.
+        // Name varies by browser: 'QuotaExceededError' on modern, code 22 on older WebKit.
+        const isQuota = e.name === 'QuotaExceededError'
+                     || e.name === 'NS_ERROR_DOM_QUOTA_REACHED'
+                     || e.code === 22 || e.code === 1014;
+        if (isQuota) {
+            showToast('Storage full. Export a backup from Profile → Stats, then delete old grooms to free space.', 'error', 8000);
+        } else {
+            showToast('Could not save. Your recent changes may be lost if you close the app.', 'error', 6000);
+        }
     }
 }
 
@@ -357,6 +365,21 @@ function getDogHistory(name) {
 function vib() { if (navigator.vibrate) navigator.vibrate(40); }
 function showAlert(msg) { vib(); _modal = { type: 'alert', msg }; R(); }
 function showConfirm(msg, cb) { vib(); _modal = { type: 'confirm', msg, onConfirm: cb }; R(); }
+
+// Show a brief non-blocking notification at the bottom of the screen.
+// type: 'info' | 'warn' | 'error' — affects color.
+// Lasts 4 seconds by default, or forever if duration is 0.
+function showToast(msg, type = 'info', duration = 4000) {
+    clearTimeout(_toastTimer);
+    _toast = { msg, type };
+    R();
+    if (duration > 0) {
+        _toastTimer = setTimeout(() => {
+            _toast = null;
+            R();
+        }, duration);
+    }
+}
 
 function compressPhoto(file, cb) {
     const r = new FileReader();
@@ -522,6 +545,13 @@ function R() {
                 </div>
             </div>
         </div>`;
+    } else if (_toast) {
+        // Toast colors: info=neutral, warn=gold, error=coral.
+        const bg = _toast.type === 'error' ? 'var(--co)'
+                 : _toast.type === 'warn'  ? 'var(--hn)'
+                 : 'var(--tx)';
+        mod.innerHTML = `
+        <div style="position:fixed;bottom:calc(110px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);z-index:998;max-width:340px;width:calc(100% - 32px);padding:14px 18px;background:${bg};color:var(--wh);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.2);font-size:14px;font-weight:500;text-align:center;line-height:1.4;" class="fi">${esc(_toast.msg)}</div>`;
     } else {
         mod.innerHTML = '';
     }
@@ -1636,22 +1666,85 @@ function exportData() {
     dlNode.remove();
 }
 
+// Validates an imported backup object's shape before applying it to state.
+// Returns a cleaned, safe-to-use state object, or null if it's garbage.
+function sanitizeImport(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    // Must have a logs array — this is the minimum for a valid GroomPace backup.
+    if (!Array.isArray(raw.logs)) return null;
+    
+    // Build a clean object, only pulling known fields. This protects against
+    // a malicious or corrupted file injecting unexpected properties into state.
+    const clean = {
+        logs: raw.logs
+            .filter(l => l && typeof l === 'object' && typeof l.breed === 'string' && typeof l.min === 'number')
+            .map(l => ({
+                id: Number(l.id) || Date.now() + Math.random(),
+                ts: Number(l.ts) || Date.now(),
+                date: String(l.date || ''),
+                dogName: String(l.dogName || ''),
+                breed: String(l.breed || ''),
+                style: String(l.style || ''),
+                size: ['small','medium','large'].includes(l.size) ? l.size : 'medium',
+                min: Math.max(0, Number(l.min) || 0),
+                pw: Math.max(0, Number(l.pw) || 0),
+                bo: Math.max(0, Number(l.bo) || 0),
+                bs: Math.max(0, Number(l.bs) || 0),
+                sl: Math.max(0, Number(l.sl) || 0),
+                hf: Math.max(0, Number(l.hf) || 0),
+                ta: Math.max(0, Number(l.ta) || 0),
+                fi: Math.max(0, Number(l.fi) || 0),
+                diff: [1,2,3].includes(l.diff) ? l.diff : 1,
+                notes: String(l.notes || ''),
+                timed: !!l.timed,
+                // Photos are data: URIs — only accept strings that look right.
+                before: (typeof l.before === 'string' && l.before.startsWith('data:image/')) ? l.before : null,
+                after:  (typeof l.after  === 'string' && l.after.startsWith('data:image/')) ? l.after : null
+            })),
+        chk: (raw.chk && typeof raw.chk === 'object' && !Array.isArray(raw.chk)) ? raw.chk : {},
+        breedNotes: (raw.breedNotes && typeof raw.breedNotes === 'object' && !Array.isArray(raw.breedNotes)) ? raw.breedNotes : {},
+        goals: {
+            dogsPerDay: Math.max(0, Number(raw.goals?.dogsPerDay) || 0),
+            avgTarget:  Math.max(0, Number(raw.goals?.avgTarget)  || 0)
+        },
+        standards: Array.isArray(raw.standards) ? raw.standards.filter(s => s && typeof s === 'object' && typeof s.title === 'string') : [],
+        onboarded: !!raw.onboarded
+    };
+    return clean;
+}
+
 function importData(e) {
     vib();
     const file = e.target.files[0];
-    if(!file) return;
+    if (!file) return;
+    
+    // Guard against huge files that could lock up the browser.
+    if (file.size > 20 * 1024 * 1024) {
+        showToast('File is too large to import (over 20MB).', 'error', 6000);
+        return;
+    }
+    
     const reader = new FileReader();
     reader.onload = function(event) {
         try {
-            const obj = JSON.parse(event.target.result);
-            if(obj && obj.logs) {
-                Object.assign(S, obj);
-                save();
-                showAlert("Restored! 🐾");
-            } else { throw new Error("Invalid format"); }
+            const raw = JSON.parse(event.target.result);
+            const clean = sanitizeImport(raw);
+            if (!clean) {
+                showToast('That file doesn\'t look like a GroomPace backup.', 'error', 6000);
+                return;
+            }
+            // Apply only the whitelisted fields.
+            Object.assign(S, clean);
+            save();
+            R();
+            showToast(`Restored ${clean.logs.length} grooms 🐾`, 'info', 4000);
         } catch(err) {
-            showAlert("Error importing file. Invalid format.");
+            console.error('Import failed:', err);
+            showToast('Could not read that file. Is it valid JSON?', 'error', 6000);
         }
+    };
+    reader.onerror = function() {
+        showToast('Could not read the file.', 'error', 6000);
     };
     reader.readAsText(file);
 }
