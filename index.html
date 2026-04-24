@@ -200,6 +200,8 @@ let _toastTimer = null;
 let _resetting = false; // When true, save() is a no-op. Prevents beforeunload
                         // from re-saving data that's in the middle of being wiped.
 
+let _lightbox = null; // Holds the photo ref currently showing in the
+                      // fullscreen lightbox, or null when closed.
 
 // ── Photo Storage (IndexedDB) ──
 // Photos are stored in IndexedDB instead of localStorage because they're
@@ -554,7 +556,7 @@ function compressPhoto(file, cb) {
         img.onload = function() {
             try {
                 const c = document.createElement('canvas');
-                const max = 400;
+                const max = 1200;
                 let w = img.width, h = img.height;
                 if (!w || !h) throw new Error('Image has no dimensions');
                 if (w > max || h > max) {
@@ -565,7 +567,7 @@ function compressPhoto(file, cb) {
                 const ctx = c.getContext('2d');
                 if (!ctx) throw new Error('Canvas context unavailable');
                 ctx.drawImage(img, 0, 0, w, h);
-                const dataUrl = c.toDataURL('image/jpeg', 0.5);
+                const dataUrl = c.toDataURL('image/jpeg', 0.75);
                 if (!dataUrl || dataUrl === 'data:,') throw new Error('Canvas produced empty output');
                 cb(dataUrl);
             } catch (err) {
@@ -772,6 +774,17 @@ function R() {
                  : 'var(--tx)';
         mod.innerHTML = `
         <div style="position:fixed;bottom:calc(110px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);z-index:998;max-width:340px;width:calc(100% - 32px);padding:14px 18px;background:${bg};color:var(--wh);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.2);font-size:14px;font-weight:500;text-align:center;line-height:1.4;" class="fi">${esc(_toast.msg)}</div>`;
+    } else if (_lightbox) {
+        // Fullscreen photo viewer. Tapping the backdrop OR the close button
+        // closes it. The image itself doesn't have data-action so tapping
+        // directly on it doesn't dismiss — that's intentional, lets the user
+        // pinch-to-zoom on mobile without accidentally closing.
+        const src = photoSrc(_lightbox);
+        mod.innerHTML = `
+        <div data-action="close-photo" style="position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;" class="fi">
+            <img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;cursor:default;" onclick="event.stopPropagation()">
+            <button data-action="close-photo" style="position:absolute;top:calc(env(safe-area-inset-top,12px) + 12px);right:16px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.15);color:var(--wh);font-size:22px;font-weight:300;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">✕</button>
+        </div>`;
     } else {
         mod.innerHTML = '';
     }
@@ -880,6 +893,8 @@ const ACTIONS = {
     'save-breed':        (el) => saveBreedNote(el.dataset.key || null),
     'save-std':          (el) => saveStd(el.dataset.id || null),
     'clear-photo-edit':  (el) => { if (el.dataset.which === 'B') _edPhB = null; else _edPhA = null; R(); },
+    'show-photo':        (el) => { vib(); _lightbox = el.dataset.ref; R(); },
+    'close-photo':       ()   => { vib(); _lightbox = null; R(); },
     'save-review':       ()   => saveReview(),
     'discard-review':    ()   => discardReview(),
     'start-timer-setup': ()   => {
@@ -1108,7 +1123,9 @@ function renderTimer() {
             ${rv.before ? `
             <div style="margin-bottom:16px">
                 <div class="lbl">Before Photo</div>
-                <img src="${photoSrc(rv.before)}" class="photo-thumb" style="width:80px;height:80px;">
+                <button data-action="show-photo" data-ref="${esc(rv.before)}" style="padding:0;background:none;border:none;cursor:pointer;">
+                    <img src="${photoSrc(rv.before)}" class="photo-thumb" style="width:80px;height:80px;">
+                </button>
             </div>` : ''}
 
             <div class="c" style="padding:22px;margin-bottom:16px;border:1px solid rgba(212,132,154,.2)">
@@ -1127,7 +1144,7 @@ function renderTimer() {
                         ${_rvAfter ? '✅ Photo Added (Tap to change)' : '📸 Upload After Photo'}
                         <input type="file" accept="image/*" capture="environment" id="rvPA" onchange="rvPhoto()">
                     </label>
-                   <div id="rvPAp" style="margin-top:8px">${_rvAfter ? `<img src="${photoSrc(_rvAfter)}" class="photo-thumb">` : ''}</div>
+                   <div id="rvPAp" style="margin-top:8px">${_rvAfter ? `<button data-action="show-photo" data-ref="${esc(_rvAfter)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(_rvAfter)}" class="photo-thumb"></button>` : ''}</div>
                 </div>
 
                 <div style="margin-bottom:18px"><label class="lbl">Notes</label><input class="inp" id="rvNotes" placeholder="How did it go?"></div>
@@ -1165,7 +1182,7 @@ function renderTimer() {
                         ${S.timerBeforePhoto ? '✅ Photo Added' : '📸 Upload Before'}
                         <input type="file" accept="image/*" capture="environment" id="tPB" onchange="timerBeforePhoto()">
                     </label>
-                    <div id="tPBp" style="margin-top:8px">${S.timerBeforePhoto ? `<img src="${photoSrc(S.timerBeforePhoto)}" class="photo-thumb">` : ''}</div>
+                    <div id="tPBp" style="margin-top:8px">${S.timerBeforePhoto ? `<button data-action="show-photo" data-ref="${esc(S.timerBeforePhoto)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(S.timerBeforePhoto)}" class="photo-thumb"></button>` : ''}</div>
                 </div>
             </div>
             
@@ -1297,8 +1314,8 @@ function renderLog() {
 
                 ${(l.before || l.after) ? `
                 <div style="display:flex;gap:12px;margin-bottom:12px">
-                    ${l.before ? `<div><div style="font-size:10px;color:var(--di);margin-bottom:4px;font-weight:600;">BEFORE</div><img src="${photoSrc(l.before)}" class="photo-thumb" style="width:72px;height:72px;"></div>` : ''}
-                    ${l.after ? `<div><div style="font-size:10px;color:var(--di);margin-bottom:4px;font-weight:600;">AFTER</div><img src="${photoSrc(l.after)}" class="photo-thumb" style="width:72px;height:72px;"></div>` : ''}
+                    ${l.before ? `<div><div style="font-size:10px;color:var(--di);margin-bottom:4px;font-weight:600;">BEFORE</div><button data-action="show-photo" data-ref="${esc(l.before)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(l.before)}" class="photo-thumb" style="width:72px;height:72px;"></button></div>` : ''}
+                    ${l.after ? `<div><div style="font-size:10px;color:var(--di);margin-bottom:4px;font-weight:600;">AFTER</div><button data-action="show-photo" data-ref="${esc(l.after)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(l.after)}" class="photo-thumb" style="width:72px;height:72px;"></button></div>` : ''}
                 </div>` : ''}
 
                 ${l.notes ? `<div style="font-size:13px;color:var(--di);margin-bottom:12px;font-style:italic">"${esc(l.notes)}"</div>` : ''}
@@ -1383,11 +1400,11 @@ function renderLogForm() {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
             <div><label class="lbl">📸 Before</label>
                 <label class="file-btn">${_phB ? '✅ Change' : '📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="fPB" onchange="hPh('fPB','B')"></label>
-                <div id="pvB" style="margin-top:8px">${_phB ? `<img src="${photoSrc(_phB)}" class="photo-thumb">` : ''}</div>
+                <div id="pvB" style="margin-top:8px">${_phB ? `<button data-action="show-photo" data-ref="${esc(_phB)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(_phB)}" class="photo-thumb"></button>` : ''}</div>
             </div>
             <div><label class="lbl">📸 After</label>
                 <label class="file-btn">${_phA ? '✅ Change' : '📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="fPA" onchange="hPh('fPA','A')"></label>
-                <div id="pvA" style="margin-top:8px">${_phA ? `<img src="${photoSrc(_phA)}" class="photo-thumb">` : ''}</div>
+                <div id="pvA" style="margin-top:8px">${_phA ? `<button data-action="show-photo" data-ref="${esc(_phA)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(_phA)}" class="photo-thumb"></button>` : ''}</div>
             </div>
         </div>
         
@@ -1510,11 +1527,11 @@ function renderEditForm() {
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
             <div><label class="lbl">📸 Before</label>
-                ${_edPhB ? `<div style="margin-bottom:8px;position:relative;display:inline-block;"><img src="${photoSrc(_edPhB)}" class="photo-thumb"><button data-action="clear-photo-edit" data-which="B" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>` : ''}
+                ${_edPhB ? `<div style="margin-bottom:8px;position:relative;display:inline-block;"><button data-action="show-photo" data-ref="${esc(_edPhB)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(_edPhB)}" class="photo-thumb"></button><button data-action="clear-photo-edit" data-which="B" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>` : ''}
                 <label class="file-btn">${_edPhB ? 'Change' : '📸 Upload'}<input type="file" accept="image/*" capture="environment" id="ePB" onchange="ePhH('ePB','B')"></label>
             </div>
             <div><label class="lbl">📸 After</label>
-                ${_edPhA ? `<div style="margin-bottom:8px;position:relative;display:inline-block;"><img src="${photoSrc(_edPhA)}" class="photo-thumb"><button data-action="clear-photo-edit" data-which="A" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>` : ''}
+                ${_edPhA ? `<div style="margin-bottom:8px;position:relative;display:inline-block;"><button data-action="show-photo" data-ref="${esc(_edPhA)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(_edPhA)}" class="photo-thumb"></button><button data-action="clear-photo-edit" data-which="A" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>` : ''}
                 <label class="file-btn">${_edPhA ? 'Change' : '📸 Upload'}<input type="file" accept="image/*" capture="environment" id="ePA" onchange="ePhH('ePA','A')"></label>
             </div>
         </div>
@@ -2012,7 +2029,7 @@ function renderDogDetail(name) {
                         </div>
                     </div>
                     ${tags.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${tags.map(t => `<span style="background:var(--ca);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--tm)">${t}</span>`).join('')}</div>` : ''}
-                    ${(l.before || l.after) ? `<div style="display:flex;gap:8px;margin-top:8px">${l.before ? `<img src="${photoSrc(l.before)}" class="photo-thumb" style="width:48px;height:48px">` : ''} ${l.after ? `<img src="${photoSrc(l.after)}" class="photo-thumb" style="width:48px;height:48px">` : ''}</div>` : ''}
+                    ${(l.before || l.after) ? `<div style="display:flex;gap:8px;margin-top:8px">${l.before ? `<button data-action="show-photo" data-ref="${esc(l.before)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(l.before)}" class="photo-thumb" style="width:48px;height:48px"></button>` : ''} ${l.after ? `<button data-action="show-photo" data-ref="${esc(l.after)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(l.after)}" class="photo-thumb" style="width:48px;height:48px"></button>` : ''}</div>` : ''}
                     ${l.notes ? `<div style="font-size:12px;color:var(--di);margin-top:6px;font-style:italic">"${esc(l.notes)}"</div>` : ''}
                 </div>`;
             }).join('')}
