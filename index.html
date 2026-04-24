@@ -276,9 +276,15 @@ function load() {
             S.timerRunning = false;
             S.timerReview = S.timerReview || null;
             // Defensive defaults in case a migration didn't catch something.
-            if (!S.breedNotes) S.breedNotes = {};
-            if (!S.goals) S.goals = { dogsPerDay: 0, avgTarget: 0 };
-            if (!S.standards) S.standards = [];
+            if (!S.breedNotes || typeof S.breedNotes !== 'object') S.breedNotes = {};
+            if (!S.goals || typeof S.goals !== 'object') S.goals = { dogsPerDay: 0, avgTarget: 0 };
+            if (!Array.isArray(S.standards)) S.standards = [];
+            if (!Array.isArray(S.logs)) S.logs = [];
+            // If timerSplits got corrupted as something non-array, clear it.
+            // A broken splits array crashes the running timer screen.
+            if (!Array.isArray(S.timerSplits)) S.timerSplits = [];
+            // timerStart should be a number or null, nothing else.
+            if (S.timerStart !== null && typeof S.timerStart !== 'number') S.timerStart = null;
         }
     } catch(e) {
         console.error('Failed to load saved data:', e);
@@ -381,25 +387,60 @@ function showToast(msg, type = 'info', duration = 4000) {
     }
 }
 
+// Compress an image file down to a 400px-longest-side JPEG data URL.
+// Wrapped in try/catch at every stage because images can fail in many ways:
+// HEIC files from iPhone, corrupted downloads, browser memory limits, etc.
 function compressPhoto(file, cb) {
+    // Reject obviously-not-images early.
+    if (!file || !file.type || !file.type.startsWith('image/')) {
+        showToast('That file isn\'t an image.', 'error');
+        return;
+    }
+    // Guard against huge files that would lock up the browser.
+    if (file.size > 30 * 1024 * 1024) {
+        showToast('Photo is too large (over 30MB).', 'error');
+        return;
+    }
+    
     const r = new FileReader();
     r.onload = function(e) {
         const img = new Image();
         img.onload = function() {
-            const c = document.createElement('canvas');
-            const max = 400;
-            let w = img.width, h = img.height;
-            if (w > max || h > max) {
-                if (w > h) { h = Math.round(h * (max / w)); w = max; } 
-                else { w = Math.round(w * (max / h)); h = max; }
+            try {
+                const c = document.createElement('canvas');
+                const max = 400;
+                let w = img.width, h = img.height;
+                if (!w || !h) throw new Error('Image has no dimensions');
+                if (w > max || h > max) {
+                    if (w > h) { h = Math.round(h * (max / w)); w = max; }
+                    else { w = Math.round(w * (max / h)); h = max; }
+                }
+                c.width = w; c.height = h;
+                const ctx = c.getContext('2d');
+                if (!ctx) throw new Error('Canvas context unavailable');
+                ctx.drawImage(img, 0, 0, w, h);
+                const dataUrl = c.toDataURL('image/jpeg', 0.5);
+                if (!dataUrl || dataUrl === 'data:,') throw new Error('Canvas produced empty output');
+                cb(dataUrl);
+            } catch (err) {
+                console.error('Photo compression failed:', err);
+                showToast('Could not process that photo. Try a different one.', 'error');
             }
-            c.width = w; c.height = h;
-            c.getContext('2d').drawImage(img, 0, 0, w, h);
-            cb(c.toDataURL('image/jpeg', 0.5));
+        };
+        img.onerror = function() {
+            showToast('Could not read that photo (unsupported format?).', 'error');
         };
         img.src = e.target.result;
     };
-    r.readAsDataURL(file);
+    r.onerror = function() {
+        showToast('Could not read the photo file.', 'error');
+    };
+    try {
+        r.readAsDataURL(file);
+    } catch (err) {
+        console.error('readAsDataURL failed:', err);
+        showToast('Could not open the photo file.', 'error');
+    }
 }
 
 // ── Timer Core ──
@@ -415,8 +456,20 @@ function startTimer() {
 function tick() {
     clearInterval(TI);
     TI = setInterval(() => {
-        const el = document.getElementById('tn');
-        if (el) el.textContent = fmtT(elapsed());
+        try {
+            const el = document.getElementById('tn');
+            if (el) {
+                el.textContent = fmtT(elapsed());
+            } else if (!S.timerRunning) {
+                // Timer element is gone and we're no longer running — clean up.
+                clearInterval(TI);
+                TI = null;
+            }
+        } catch (err) {
+            console.error('Timer tick error:', err);
+            clearInterval(TI);
+            TI = null;
+        }
     }, 200);
 }
 
@@ -562,9 +615,24 @@ function R() {
     const fn = { home: renderHome, timer: renderTimer, log: renderLog, tools: renderTools, me: renderMe };
     
     // Smooth transition
-    ct.innerHTML = (fn[S.tab] || renderHome)();
+   // Wrap the view render in try/catch. If a view function throws, the app
+    // would otherwise lock up with no visible UI. Fall back to Home instead.
+    try {
+        ct.innerHTML = (fn[S.tab] || renderHome)();
+    } catch (err) {
+        console.error(`Render failed for tab "${S.tab}":`, err);
+        showToast('Something went wrong loading that screen.', 'error');
+        // Fallback: go home. If Home itself is broken, show a minimal message.
+        try {
+            S.tab = 'home';
+            ct.innerHTML = renderHome();
+        } catch (err2) {
+            console.error('Home render also failed:', err2);
+            ct.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--tm)"><h2 style="margin-bottom:12px">Something went wrong</h2><p style="font-size:14px;line-height:1.6;margin-bottom:20px">Try refreshing the page. Your data is safe.</p><button onclick="location.reload()" style="padding:14px 28px;background:var(--rd);color:var(--wh);border-radius:12px;font-size:15px;font-weight:600">Refresh</button></div>';
+        }
+    }
     ct.classList.remove('fade-in');
-    void ct.offsetWidth; 
+    void ct.offsetWidth;
     ct.classList.add('fade-in');
     
     updateDatalist();
@@ -1657,13 +1725,27 @@ function renderStats() {
 
 function exportData() {
     vib();
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(S));
-    const dlNode = document.createElement('a');
-    dlNode.setAttribute("href", dataStr);
-    dlNode.setAttribute("download", "GroomPace_Backup_" + dk() + ".json");
-    document.body.appendChild(dlNode);
-    dlNode.click();
-    dlNode.remove();
+    try {
+        // Include schema version in the backup so future versions can migrate.
+        const payload = { ...S, schemaVersion: SCHEMA_VERSION };
+        const json = JSON.stringify(payload);
+        // Use a Blob URL rather than data: URL. Data URLs fail on iOS Safari
+        // over a certain size. Blob URLs work reliably.
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'GroomPace_Backup_' + dk() + '.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        // Release the URL after download is triggered.
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast('Backup downloaded 🐾', 'info', 3000);
+    } catch (err) {
+        console.error('Export failed:', err);
+        showToast('Could not create backup. Try again or restart the app.', 'error');
+    }
 }
 
 // Validates an imported backup object's shape before applying it to state.
