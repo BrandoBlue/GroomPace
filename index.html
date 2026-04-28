@@ -8,6 +8,9 @@
 <meta name="apple-mobile-web-app-title" content="GroomPace">
 <meta name="theme-color" content="#FBF7F2">
 <title>GroomPace</title>
+<!-- PWA Manifest -->
+<link rel="manifest" href="manifest.json">
+<!-- Preconnect for fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..700&family=Fraunces:opsz,wght@9..144,400..700&display=swap" rel="stylesheet">
 <style>
@@ -123,6 +126,14 @@ textarea.inp { resize: vertical; min-height: 60px; }
 <script>
 const SK = 'groompace-v4';
 
+// ── PWA Install Prompt Logic ──
+let _deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    _deferredPrompt = e;
+    R(); // Re-render to show install banner
+});
+
 // ── Data ──
 const BLADES = [
     {n:'#50',len:'1/125"',mm:'0.2',area:'Veterinary / surgical only'},
@@ -197,29 +208,16 @@ let TI = null;
 let _modal = null;
 let _toast = null;
 let _toastTimer = null;
-let _resetting = false; // When true, save() is a no-op. Prevents beforeunload
-                        // from re-saving data that's in the middle of being wiped.
+let _resetting = false; 
 
-let _lightbox = null; // Holds the photo ref currently showing in the
-                      // fullscreen lightbox, or null when closed.
+let _lightbox = null; 
 
 // ── Photo Storage (IndexedDB) ──
-// Photos are stored in IndexedDB instead of localStorage because they're
-// large (tens of KB each as base64) and would quickly exhaust localStorage's
-// ~5MB cap. localStorage still holds all the groom metadata including
-// photo IDs; when a view needs to display a photo, it fetches from IDB.
-//
-// Backward compat: logs with `before`/`after` already containing a data URL
-// (from before this change) continue to work. New photos are saved to IDB
-// and the log entry stores a small reference string like "idb:photo_123".
-
 const DB_NAME = 'groompace-photos';
 const DB_VERSION = 1;
 const STORE = 'photos';
 let _dbPromise = null;
 
-// Open (or create) the IndexedDB database. Called lazily on first photo op.
-// Returns a promise that resolves to the opened database.
 function openPhotoDB() {
     if (_dbPromise) return _dbPromise;
     _dbPromise = new Promise((resolve, reject) => {
@@ -236,10 +234,8 @@ function openPhotoDB() {
     return _dbPromise;
 }
 
-// Save a base64 data URL under a generated ID. Returns the ID string.
 async function savePhoto(dataUrl) {
     if (!dataUrl || typeof dataUrl !== 'string') return null;
-    // If it's already an idb: reference, no work to do.
     if (dataUrl.startsWith('idb:')) return dataUrl;
     try {
         const db = await openPhotoDB();
@@ -253,19 +249,13 @@ async function savePhoto(dataUrl) {
         return id;
     } catch (err) {
         console.error('Failed to save photo to IDB:', err);
-        // Fall back to returning the raw data URL so at least the photo
-        // shows up in the current session, even if storage isn't durable.
         return dataUrl;
     }
 }
 
-// Load a photo by ID. Accepts either an idb: reference OR a raw data URL
-// (for backward compat with photos saved before this change).
-// Returns the data URL, or null if not found.
 async function loadPhoto(ref) {
-    if (!ref) return null;
-    if (typeof ref !== 'string') return null;
-    if (!ref.startsWith('idb:')) return ref; // legacy inline data URL
+    if (!ref || typeof ref !== 'string') return null;
+    if (!ref.startsWith('idb:')) return ref; 
     try {
         const db = await openPhotoDB();
         return await new Promise((resolve, reject) => {
@@ -280,7 +270,6 @@ async function loadPhoto(ref) {
     }
 }
 
-// Delete a photo by ID. Called when a log is deleted or photo is cleared.
 async function deletePhoto(ref) {
     if (!ref || typeof ref !== 'string' || !ref.startsWith('idb:')) return;
     try {
@@ -296,9 +285,6 @@ async function deletePhoto(ref) {
     }
 }
 
-// Resolve all idb: references on a log entry to their actual data URLs,
-// then call the render function. Used after initial page load to hydrate
-// photo thumbnails progressively without blocking first paint.
 async function hydratePhotosForView() {
     const refs = new Set();
     S.logs.forEach(l => {
@@ -310,38 +296,24 @@ async function hydratePhotosForView() {
     }
     if (!refs.size) return;
     
-    // Load all referenced photos in parallel and stash in a runtime cache.
-    // Views read from this cache via photoSrc() below.
     const entries = await Promise.all([...refs].map(async ref => [ref, await loadPhoto(ref)]));
     entries.forEach(([ref, url]) => { _photoCache[ref] = url; });
     R();
 }
 
-// Runtime cache so views can render photos synchronously. Populated by
-// hydratePhotosForView() on load, and by the upload callbacks.
 const _photoCache = {};
 
-// Helper used inline in views: given a reference (idb: or inline data URL),
-// returns a usable <img src> value. Returns empty string if not yet loaded.
 function photoSrc(ref) {
     if (!ref) return '';
     if (typeof ref !== 'string') return '';
-    if (!ref.startsWith('idb:')) return ref; // inline / legacy data URL
+    if (!ref.startsWith('idb:')) return ref; 
     return _photoCache[ref] || '';
 }
 
 // ── Schema Version & Migrations ──
-// Current schema version. Bump this whenever the shape of saved data changes.
-// Then add a migration function to MIGRATIONS below that transforms data
-// from the previous version into the new shape.
 const SCHEMA_VERSION = 4;
 
-// Migrations run in order. Each function receives the state and returns
-// the migrated state. Functions are keyed by the version they migrate TO.
-// Example: MIGRATIONS[5] transforms v4 data into v5 data.
 const MIGRATIONS = {
-    // Migration to v4: baseline cleanup of any pre-versioned data.
-    // Ensures all expected fields exist on every log entry.
     4: (state) => {
         if (Array.isArray(state.logs)) {
             state.logs = state.logs.map(log => ({
@@ -364,21 +336,14 @@ const MIGRATIONS = {
         }
         return state;
     }
-    // Future migrations go here. Example:
-    // 5: (state) => { ... transform v4 shape to v5 shape ... return state; }
 };
 
-// Runs all necessary migrations to bring old data up to the current version.
 function migrate(state) {
-    const fromVersion = state.schemaVersion || 3; // pre-versioned data is treated as v3
-    
+    const fromVersion = state.schemaVersion || 3; 
     if (fromVersion > SCHEMA_VERSION) {
-        // Data is from a NEWER version than this app. This happens if user
-        // downgrades. Safest thing is to not touch it and hope for the best.
         console.warn('Saved data is newer than app. Skipping migrations.');
         return state;
     }
-    
     for (let v = fromVersion + 1; v <= SCHEMA_VERSION; v++) {
         if (MIGRATIONS[v]) {
             try {
@@ -386,32 +351,24 @@ function migrate(state) {
                 console.log(`Migrated data to v${v}`);
             } catch (e) {
                 console.error(`Migration to v${v} failed:`, e);
-                // Continue with other migrations rather than blocking the user.
             }
         }
     }
-    
     state.schemaVersion = SCHEMA_VERSION;
     return state;
 }
 
 // ── Initialization & Storage ──
 function load() {
-     // Always start with reset flag cleared. Belt-and-suspenders against
-    // any scenario where it somehow persisted from a previous session.
     _resetting = false;
     try {
         const raw = localStorage.getItem(SK);
         if (raw) {
             let data = JSON.parse(raw);
-            // Run migrations before merging into live state.
             data = migrate(data);
             Object.assign(S, data);
-            // Runtime-only fields should never persist across sessions.
             S.timerRunning = false;
             S.timerReview = S.timerReview || null;
-            // UI navigation state should not persist across sessions. The
-            // app always opens to Home so groomers know where they are.
             S.tab = 'home';
             S.sub = 'blades';
             S.sub2 = 'achievements';
@@ -422,22 +379,16 @@ function load() {
             S.showStdForm = false;
             S.editStdId = null;
             S.viewDog = null;
-            // Defensive defaults in case a migration didn't catch something.
+            
             if (!S.breedNotes || typeof S.breedNotes !== 'object') S.breedNotes = {};
             if (!S.goals || typeof S.goals !== 'object') S.goals = { dogsPerDay: 0, avgTarget: 0 };
             if (!Array.isArray(S.standards)) S.standards = [];
             if (!Array.isArray(S.logs)) S.logs = [];
-            // If timerSplits got corrupted as something non-array, clear it.
-            // A broken splits array crashes the running timer screen.
             if (!Array.isArray(S.timerSplits)) S.timerSplits = [];
-            // timerStart should be a number or null, nothing else.
             if (S.timerStart !== null && typeof S.timerStart !== 'number') S.timerStart = null;
         }
     } catch(e) {
         console.error('Failed to load saved data:', e);
-        // Continue with default state. User won't lose existing data in
-        // localStorage — next save will overwrite, but only if we successfully
-        // start up, so they can still export-and-restore manually if needed.
     }
     
     if (S.standards.length === 0) {
@@ -451,17 +402,13 @@ function load() {
 }
 
 function save() {
-    if (_resetting) return; // Reset in progress — don't undo the wipe.
+    if (_resetting) return; 
     try {
         const payload = { ...S, schemaVersion: SCHEMA_VERSION };
         localStorage.setItem(SK, JSON.stringify(payload));
     } catch(e) {
         console.error('Failed to save:', e);
-        // QuotaExceededError is the most common failure — storage is full.
-        // Name varies by browser: 'QuotaExceededError' on modern, code 22 on older WebKit.
-        const isQuota = e.name === 'QuotaExceededError'
-                     || e.name === 'NS_ERROR_DOM_QUOTA_REACHED'
-                     || e.code === 22 || e.code === 1014;
+        const isQuota = e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || e.code === 1014;
         if (isQuota) {
             showToast('Storage full. Export a backup from Profile → Stats, then delete old grooms to free space.', 'error', 8000);
         } else {
@@ -520,9 +467,6 @@ function vib() { if (navigator.vibrate) navigator.vibrate(40); }
 function showAlert(msg) { vib(); _modal = { type: 'alert', msg }; R(); }
 function showConfirm(msg, cb) { vib(); _modal = { type: 'confirm', msg, onConfirm: cb }; R(); }
 
-// Show a brief non-blocking notification at the bottom of the screen.
-// type: 'info' | 'warn' | 'error' — affects color.
-// Lasts 4 seconds by default, or forever if duration is 0.
 function showToast(msg, type = 'info', duration = 4000) {
     clearTimeout(_toastTimer);
     _toast = { msg, type };
@@ -535,16 +479,11 @@ function showToast(msg, type = 'info', duration = 4000) {
     }
 }
 
-// Compress an image file down to a 400px-longest-side JPEG data URL.
-// Wrapped in try/catch at every stage because images can fail in many ways:
-// HEIC files from iPhone, corrupted downloads, browser memory limits, etc.
 function compressPhoto(file, cb) {
-    // Reject obviously-not-images early.
     if (!file || !file.type || !file.type.startsWith('image/')) {
         showToast('That file isn\'t an image.', 'error');
         return;
     }
-    // Guard against huge files that would lock up the browser.
     if (file.size > 30 * 1024 * 1024) {
         showToast('Photo is too large (over 30MB).', 'error');
         return;
@@ -601,16 +540,12 @@ function startTimer() {
     save(); tick(); R(); 
 }
 
-// Update the on-screen timer value once, immediately. Used by both the
-// interval tick and by visibility/pageshow listeners to force-refresh
-// the display after a background period.
 function paintTimer() {
     try {
         const el = document.getElementById('tn');
         if (el) {
             el.textContent = fmtT(elapsed());
         } else if (!S.timerRunning) {
-            // Timer element is gone and we're no longer running — clean up.
             clearInterval(TI);
             TI = null;
         }
@@ -727,10 +662,6 @@ function updateDatalist() {
 function R() {
     const ct = document.getElementById('ct'), nv = document.getElementById('nv'), mod = document.getElementById('modalRoot');
     
-// Snapshot values of any form inputs currently in the DOM before we
-    // blow them away with innerHTML. After the render, we restore them.
-    // This prevents form fields from resetting when the user taps a size
-    // or difficulty pill while partway through typing.
     const inputSnapshot = {};
     const focusedId = document.activeElement ? document.activeElement.id : null;
     let selStart = null, selEnd = null;
@@ -743,7 +674,6 @@ function R() {
         }
     });
 
-    // Navigation Render
     const tabs = [
         { k:'home', i:'🏠', l:'Home' }, { k:'timer', i:'⏱️', l:'Timer' },
         { k:'log', i:'✂️', l:'Log' }, { k:'tools', i:'🔧', l:'Tools' },
@@ -755,7 +685,6 @@ function R() {
         </button>`
     ).join('');
     
-    // Modals Render
     if (_modal) {
         mod.innerHTML = `
         <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)">
@@ -768,17 +697,12 @@ function R() {
             </div>
         </div>`;
     } else if (_toast) {
-        // Toast colors: info=neutral, warn=gold, error=coral.
         const bg = _toast.type === 'error' ? 'var(--co)'
                  : _toast.type === 'warn'  ? 'var(--hn)'
                  : 'var(--tx)';
         mod.innerHTML = `
         <div style="position:fixed;bottom:calc(110px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);z-index:998;max-width:340px;width:calc(100% - 32px);padding:14px 18px;background:${bg};color:var(--wh);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.2);font-size:14px;font-weight:500;text-align:center;line-height:1.4;" class="fi">${esc(_toast.msg)}</div>`;
     } else if (_lightbox) {
-        // Fullscreen photo viewer. Tapping the backdrop OR the close button
-        // closes it. The image itself doesn't have data-action so tapping
-        // directly on it doesn't dismiss — that's intentional, lets the user
-        // pinch-to-zoom on mobile without accidentally closing.
         const src = photoSrc(_lightbox);
         mod.innerHTML = `
         <div data-action="close-photo" style="position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;" class="fi">
@@ -791,25 +715,17 @@ function R() {
 
    if (!S.onboarded) {
         ct.innerHTML = renderOnboard();
-        // Wire actions even on the onboarding screen so the "Let's Go" button
-        // responds. Otherwise the early return skips the wireActions() call
-        // at the bottom of R() and the user is stuck.
         wireActions();
         return;
     }
     
-    // Content routing mapping
     const fn = { home: renderHome, timer: renderTimer, log: renderLog, tools: renderTools, me: renderMe };
     
-    // Smooth transition
-   // Wrap the view render in try/catch. If a view function throws, the app
-    // would otherwise lock up with no visible UI. Fall back to Home instead.
     try {
         ct.innerHTML = (fn[S.tab] || renderHome)();
     } catch (err) {
         console.error(`Render failed for tab "${S.tab}":`, err);
         showToast('Something went wrong loading that screen.', 'error');
-        // Fallback: go home. If Home itself is broken, show a minimal message.
         try {
             S.tab = 'home';
             ct.innerHTML = renderHome();
@@ -822,23 +738,17 @@ function R() {
     void ct.offsetWidth;
     ct.classList.add('fade-in');
     
-   updateDatalist();
+    updateDatalist();
     if (S.timerRunning) tick();
     
-    // Wire up event delegation after each render. One listener on the app
-    // root reads data-action attributes and dispatches to the right handler.
     wireActions();
     
-    // Restore any input values we snapshotted before the re-render, so
-    // typing in a form isn't wiped when the user taps size/difficulty pills
-    // or any other control that triggers a re-render.
     Object.keys(inputSnapshot).forEach(id => {
         const inp = document.getElementById(id);
         if (inp && inp.value !== inputSnapshot[id]) {
             inp.value = inputSnapshot[id];
         }
     });
-    // Restore focus and cursor position on whichever field had it.
     if (focusedId) {
         const focused = document.getElementById(focusedId);
         if (focused) {
@@ -855,8 +765,6 @@ function go(t) {
     R(); window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
-// Maps data-action values to their handler functions.
-// The handler receives the clicked element so it can read data-* attributes.
 const ACTIONS = {
     'go-tab':            (el) => go(el.dataset.tab),
     'go-log-form':       ()   => { vib(); S.tab = 'log'; S.showForm = true; R(); },
@@ -906,18 +814,16 @@ const ACTIONS = {
     'stop-timer':        ()   => stopTimer(),
     'cancel-timer':      ()   => cancelTimer(),
     'export-data':       ()   => exportData(),
+    'install-pwa':       async () => {
+        if (!_deferredPrompt) return;
+        _deferredPrompt.prompt();
+        const { outcome } = await _deferredPrompt.userChoice;
+        if (outcome === 'accepted') { _deferredPrompt = null; R(); }
+    },
     'reset-all':         ()   => showConfirm('Reset ALL data?', async () => {
-        // Flip the reset flag before doing anything. This prevents any
-        // incidental save() calls (including the beforeunload listener
-        // that fires on location.reload) from rewriting the data we're
-        // about to wipe.
         _resetting = true;
-        // Wipe localStorage so no state survives the reload.
         localStorage.removeItem(SK);
-        // Wipe the IndexedDB photo store too. Orphaned photos would
-        // otherwise hang around eating storage after a reset.
         try {
-            // Clear the open connection's transactions before deleting.
             if (_dbPromise) {
                 const db = await _dbPromise;
                 db.close();
@@ -927,19 +833,15 @@ const ACTIONS = {
                 const req = indexedDB.deleteDatabase(DB_NAME);
                 req.onsuccess = resolve;
                 req.onerror   = () => reject(req.error);
-                req.onblocked = resolve; // don't hang if another tab has it open
+                req.onblocked = resolve;
             });
         } catch (err) {
             console.error('Failed to clear IDB during reset:', err);
-            // Fall through — user expected a reset, still reload.
         }
         location.reload();
     })
 };
 
-// Attach the delegated click listener exactly once. On subsequent renders,
-// the listener stays in place; we just re-bind the modal buttons since they
-// are recreated fresh each render.
 let _actionsWired = false;
 function wireActions() {
     if (!_actionsWired) {
@@ -960,7 +862,6 @@ function wireActions() {
             }
         });
     }
-    // Modal buttons get freshly wired each render since they're recreated.
     const cancelBtn = document.getElementById('modalCancel');
     if (cancelBtn) cancelBtn.onclick = () => { _modal = null; R(); };
     const okBtn = document.getElementById('modalOk');
@@ -1007,8 +908,15 @@ function renderHome() {
     const todayDone = CHK.filter(i => S.chk[dk() + '_' + i.id]).length;
     const gs = S.goals.dogsPerDay > 0 || S.goals.avgTarget > 0;
 
+    const installBanner = _deferredPrompt ? `
+    <div class="c fi" style="padding:14px 18px; margin-bottom:14px; background:linear-gradient(135deg,var(--ro),var(--rd)); color:var(--wh); display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:14px; font-weight:500;">📱 Install GroomPace as an App!</span>
+        <button data-action="install-pwa" style="padding:8px 16px; background:var(--wh); color:var(--rd); border-radius:10px; font-weight:bold; font-size:13px;">Install</button>
+    </div>` : '';
+
     return `
     <div style="padding-top:env(safe-area-inset-top,12px)">
+        ${installBanner}
         <div style="text-align:center;padding:28px 16px 20px;background:linear-gradient(180deg,var(--ca),var(--bg));margin:0 -18px 18px;position:relative;overflow:hidden">
             <div style="position:absolute;top:10px;left:18px;opacity:.06;font-size:40px;transform:rotate(-12deg)">🐾</div>
             <div style="position:absolute;top:40px;right:14px;opacity:.05;font-size:30px;transform:rotate(20deg)">✂️</div>
@@ -1139,15 +1047,15 @@ function renderTimer() {
                     </div>
                 </div>
 
-                <div style="margin-bottom:16px"><label class="lbl">📸 After Photo</label>
-                    <label class="file-btn">
+                <div style="margin-bottom:16px"><label class="lbl" for="rvPA">📸 After Photo</label>
+                    <label class="file-btn" for="rvPA">
                         ${_rvAfter ? '✅ Photo Added (Tap to change)' : '📸 Upload After Photo'}
                         <input type="file" accept="image/*" capture="environment" id="rvPA" onchange="rvPhoto()">
                     </label>
                    <div id="rvPAp" style="margin-top:8px">${_rvAfter ? `<button data-action="show-photo" data-ref="${esc(_rvAfter)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(_rvAfter)}" class="photo-thumb"></button>` : ''}</div>
                 </div>
 
-                <div style="margin-bottom:18px"><label class="lbl">Notes</label><input class="inp" id="rvNotes" placeholder="How did it go?"></div>
+                <div style="margin-bottom:18px"><label class="lbl" for="rvNotes">Notes</label><input class="inp" id="rvNotes" placeholder="How did it go?"></div>
                 
                 <div style="display:flex;gap:12px">
                     <button data-action="save-review" style="flex:1;padding:16px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(212,132,154,.35)">Save 🐾</button>
@@ -1166,19 +1074,19 @@ function renderTimer() {
             
             <div class="c" style="padding:22px;margin-bottom:18px">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-                    <div><label class="lbl">Dog Name</label><input class="inp" id="tDN" placeholder="e.g. Bella" value="${esc(S.timerDogName)}" list="dogNameList"></div>
-                    <div><label class="lbl">Breed</label><input class="inp" id="tB" placeholder="e.g. Goldendoodle" value="${esc(S.timerBreed)}" list="breedList"></div>
+                    <div><label class="lbl" for="tDN">Dog Name</label><input class="inp" id="tDN" placeholder="e.g. Bella" value="${esc(S.timerDogName)}" list="dogNameList"></div>
+                    <div><label class="lbl" for="tB">Breed</label><input class="inp" id="tB" placeholder="e.g. Goldendoodle" value="${esc(S.timerBreed)}" list="breedList"></div>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-                    <div><label class="lbl">Style</label><input class="inp" id="tS" placeholder="e.g. Teddy bear" value="${esc(S.timerStyle)}"></div>
+                    <div><label class="lbl" for="tS">Style</label><input class="inp" id="tS" placeholder="e.g. Teddy bear" value="${esc(S.timerStyle)}"></div>
                     <div><label class="lbl">Size</label>
                         <div style="display:flex;gap:6px">
                             ${['small','medium','large'].map(s => `<button class="pill ${S.timerSize === s ? 'on' : ''}" style="flex:1;padding:14px 4px;" data-action="set-size" data-size="${s}">${s}</button>`).join('')}
                         </div>
                     </div>
                 </div>
-                <div><label class="lbl">📸 Before Photo</label>
-                    <label class="file-btn">
+                <div><label class="lbl" for="tPB">📸 Before Photo</label>
+                    <label class="file-btn" for="tPB">
                         ${S.timerBeforePhoto ? '✅ Photo Added' : '📸 Upload Before'}
                         <input type="file" accept="image/*" capture="environment" id="tPB" onchange="timerBeforePhoto()">
                     </label>
@@ -1360,17 +1268,17 @@ function renderLogForm() {
         </div>
         
         <div style="margin-bottom:16px">
-            <label class="lbl">Date</label>
+            <label class="lbl" for="fDate">Date</label>
             <input type="date" class="inp" id="fDate" value="${dk()}">
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-            <div><label class="lbl">Dog Name</label><input class="inp" id="fDN" placeholder="e.g. Bella" list="dogNameList"></div>
-            <div><label class="lbl">Breed *</label><input class="inp" id="fB" placeholder="e.g. Shih Tzu" list="breedList"></div>
+            <div><label class="lbl" for="fDN">Dog Name</label><input class="inp" id="fDN" placeholder="e.g. Bella" list="dogNameList"></div>
+            <div><label class="lbl" for="fB">Breed *</label><input class="inp" id="fB" placeholder="e.g. Shih Tzu" list="breedList"></div>
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-            <div><label class="lbl">Style</label><input class="inp" id="fSt" placeholder="e.g. Teddy bear"></div>
+            <div><label class="lbl" for="fSt">Style</label><input class="inp" id="fSt" placeholder="e.g. Teddy bear"></div>
             <div><label class="lbl">Size</label>
                 <div style="display:flex;gap:6px" id="szB">
                     ${['small','medium','large'].map(s => `<button class="pill ${_sz===s?'on':''}" style="flex:1;padding:12px 2px;" data-action="set-size-form" data-size="${s}">${s}</button>`).join('')}
@@ -1387,28 +1295,28 @@ function renderLogForm() {
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-            <div><label class="lbl">Total Time (min) *</label><input class="inp" id="fT" type="number" inputmode="numeric" placeholder="45" style="border-color:var(--ro)"></div>
-            <div><label class="lbl">Prework (min)</label><input class="inp" id="fPw" type="number" inputmode="numeric"></div>
-            <div><label class="lbl">Brush Out (min)</label><input class="inp" id="fBo" type="number" inputmode="numeric"></div>
-            <div><label class="lbl">Body Shave (min)</label><input class="inp" id="fBs" type="number" inputmode="numeric"></div>
-            <div><label class="lbl">Legs & Feet (min)</label><input class="inp" id="fSl" type="number" inputmode="numeric"></div>
-            <div><label class="lbl">Head & Face (min)</label><input class="inp" id="fHf" type="number" inputmode="numeric"></div>
-            <div><label class="lbl">Tail (min)</label><input class="inp" id="fTa" type="number" inputmode="numeric"></div>
-            <div><label class="lbl">Finished (min)</label><input class="inp" id="fFi" type="number" inputmode="numeric"></div>
+            <div><label class="lbl" for="fT">Total Time (min) *</label><input class="inp" id="fT" type="number" inputmode="numeric" placeholder="45" style="border-color:var(--ro)"></div>
+            <div><label class="lbl" for="fPw">Prework (min)</label><input class="inp" id="fPw" type="number" inputmode="numeric"></div>
+            <div><label class="lbl" for="fBo">Brush Out (min)</label><input class="inp" id="fBo" type="number" inputmode="numeric"></div>
+            <div><label class="lbl" for="fBs">Body Shave (min)</label><input class="inp" id="fBs" type="number" inputmode="numeric"></div>
+            <div><label class="lbl" for="fSl">Legs & Feet (min)</label><input class="inp" id="fSl" type="number" inputmode="numeric"></div>
+            <div><label class="lbl" for="fHf">Head & Face (min)</label><input class="inp" id="fHf" type="number" inputmode="numeric"></div>
+            <div><label class="lbl" for="fTa">Tail (min)</label><input class="inp" id="fTa" type="number" inputmode="numeric"></div>
+            <div><label class="lbl" for="fFi">Finished (min)</label><input class="inp" id="fFi" type="number" inputmode="numeric"></div>
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-            <div><label class="lbl">📸 Before</label>
-                <label class="file-btn">${_phB ? '✅ Change' : '📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="fPB" onchange="hPh('fPB','B')"></label>
+            <div><label class="lbl" for="fPB">📸 Before</label>
+                <label class="file-btn" for="fPB">${_phB ? '✅ Change' : '📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="fPB" onchange="hPh('fPB','B')"></label>
                 <div id="pvB" style="margin-top:8px">${_phB ? `<button data-action="show-photo" data-ref="${esc(_phB)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(_phB)}" class="photo-thumb"></button>` : ''}</div>
             </div>
-            <div><label class="lbl">📸 After</label>
-                <label class="file-btn">${_phA ? '✅ Change' : '📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="fPA" onchange="hPh('fPA','A')"></label>
+            <div><label class="lbl" for="fPA">📸 After</label>
+                <label class="file-btn" for="fPA">${_phA ? '✅ Change' : '📸 Tap Upload'}<input type="file" accept="image/*" capture="environment" id="fPA" onchange="hPh('fPA','A')"></label>
                 <div id="pvA" style="margin-top:8px">${_phA ? `<button data-action="show-photo" data-ref="${esc(_phA)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(_phA)}" class="photo-thumb"></button>` : ''}</div>
             </div>
         </div>
         
-        <div style="margin-bottom:20px"><label class="lbl">Notes</label><input class="inp" id="fN" placeholder="Optional notes"></div>
+        <div style="margin-bottom:20px"><label class="lbl" for="fN">Notes</label><input class="inp" id="fN" placeholder="Optional notes"></div>
         
         <div style="display:flex;gap:12px">
             <button data-action="submit-log" style="flex:2;padding:16px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(212,132,154,.35)">Save 🐾</button>
@@ -1488,17 +1396,17 @@ function renderEditForm() {
         </div>
         
         <div style="margin-bottom:16px">
-            <label class="lbl">Date</label>
+            <label class="lbl" for="eDate">Date</label>
             <input type="date" class="inp" id="eDate" value="${isoDate}">
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-            <div><label class="lbl">Dog Name</label><input class="inp" id="eDN" value="${esc(l.dogName || '')}" list="dogNameList"></div>
-            <div><label class="lbl">Breed *</label><input class="inp" id="eB" value="${esc(l.breed || '')}" list="breedList"></div>
+            <div><label class="lbl" for="eDN">Dog Name</label><input class="inp" id="eDN" value="${esc(l.dogName || '')}" list="dogNameList"></div>
+            <div><label class="lbl" for="eB">Breed *</label><input class="inp" id="eB" value="${esc(l.breed || '')}" list="breedList"></div>
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-            <div><label class="lbl">Style</label><input class="inp" id="eSt" value="${esc(l.style || '')}"></div>
+            <div><label class="lbl" for="eSt">Style</label><input class="inp" id="eSt" value="${esc(l.style || '')}"></div>
             <div><label class="lbl">Size</label>
                 <div style="display:flex;gap:6px" id="edSzB">
                     ${['small','medium','large'].map(s => `<button class="pill ${_edSz===s?'on':''}" style="flex:1;padding:12px 2px;" data-action="set-size-edit" data-size="${s}">${s}</button>`).join('')}
@@ -1515,28 +1423,28 @@ function renderEditForm() {
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-            <div><label class="lbl">Total (min) *</label><input class="inp" id="eT" type="number" inputmode="numeric" value="${l.min || ''}" style="border-color:var(--sg)"></div>
-            <div><label class="lbl">Prework</label><input class="inp" id="ePw" type="number" inputmode="numeric" value="${l.pw || ''}"></div>
-            <div><label class="lbl">Brush Out</label><input class="inp" id="eBo" type="number" inputmode="numeric" value="${l.bo || ''}"></div>
-            <div><label class="lbl">Body Shave</label><input class="inp" id="eBs" type="number" inputmode="numeric" value="${l.bs || l.cl || ''}"></div>
-            <div><label class="lbl">Legs & Feet</label><input class="inp" id="eSl" type="number" inputmode="numeric" value="${l.sl || l.sc || ''}"></div>
-            <div><label class="lbl">Head & Face</label><input class="inp" id="eHf" type="number" inputmode="numeric" value="${l.hf || ''}"></div>
-            <div><label class="lbl">Tail</label><input class="inp" id="eTa" type="number" inputmode="numeric" value="${l.ta || ''}"></div>
-            <div><label class="lbl">Finished</label><input class="inp" id="eFi" type="number" inputmode="numeric" value="${l.fi || ''}"></div>
+            <div><label class="lbl" for="eT">Total (min) *</label><input class="inp" id="eT" type="number" inputmode="numeric" value="${l.min || ''}" style="border-color:var(--sg)"></div>
+            <div><label class="lbl" for="ePw">Prework</label><input class="inp" id="ePw" type="number" inputmode="numeric" value="${l.pw || ''}"></div>
+            <div><label class="lbl" for="eBo">Brush Out</label><input class="inp" id="eBo" type="number" inputmode="numeric" value="${l.bo || ''}"></div>
+            <div><label class="lbl" for="eBs">Body Shave</label><input class="inp" id="eBs" type="number" inputmode="numeric" value="${l.bs || l.cl || ''}"></div>
+            <div><label class="lbl" for="eSl">Legs & Feet</label><input class="inp" id="eSl" type="number" inputmode="numeric" value="${l.sl || l.sc || ''}"></div>
+            <div><label class="lbl" for="eHf">Head & Face</label><input class="inp" id="eHf" type="number" inputmode="numeric" value="${l.hf || ''}"></div>
+            <div><label class="lbl" for="eTa">Tail</label><input class="inp" id="eTa" type="number" inputmode="numeric" value="${l.ta || ''}"></div>
+            <div><label class="lbl" for="eFi">Finished</label><input class="inp" id="eFi" type="number" inputmode="numeric" value="${l.fi || ''}"></div>
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-            <div><label class="lbl">📸 Before</label>
+            <div><label class="lbl" for="ePB">📸 Before</label>
                 ${_edPhB ? `<div style="margin-bottom:8px;position:relative;display:inline-block;"><button data-action="show-photo" data-ref="${esc(_edPhB)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(_edPhB)}" class="photo-thumb"></button><button data-action="clear-photo-edit" data-which="B" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>` : ''}
-                <label class="file-btn">${_edPhB ? 'Change' : '📸 Upload'}<input type="file" accept="image/*" capture="environment" id="ePB" onchange="ePhH('ePB','B')"></label>
+                <label class="file-btn" for="ePB">${_edPhB ? 'Change' : '📸 Upload'}<input type="file" accept="image/*" capture="environment" id="ePB" onchange="ePhH('ePB','B')"></label>
             </div>
-            <div><label class="lbl">📸 After</label>
+            <div><label class="lbl" for="ePA">📸 After</label>
                 ${_edPhA ? `<div style="margin-bottom:8px;position:relative;display:inline-block;"><button data-action="show-photo" data-ref="${esc(_edPhA)}" style="padding:0;background:none;border:none;cursor:pointer;"><img src="${photoSrc(_edPhA)}" class="photo-thumb"></button><button data-action="clear-photo-edit" data-which="A" style="position:absolute;top:-6px;right:-6px;background:var(--card);color:var(--co);border-radius:50%;width:24px;height:24px;box-shadow:var(--sh);font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd);">×</button></div>` : ''}
-                <label class="file-btn">${_edPhA ? 'Change' : '📸 Upload'}<input type="file" accept="image/*" capture="environment" id="ePA" onchange="ePhH('ePA','A')"></label>
+                <label class="file-btn" for="ePA">${_edPhA ? 'Change' : '📸 Upload'}<input type="file" accept="image/*" capture="environment" id="ePA" onchange="ePhH('ePA','A')"></label>
             </div>
         </div>
         
-        <div style="margin-bottom:20px"><label class="lbl">Notes</label><input class="inp" id="eN" placeholder="Notes" value="${esc(l.notes || '')}"></div>
+        <div style="margin-bottom:20px"><label class="lbl" for="eN">Notes</label><input class="inp" id="eN" placeholder="Notes" value="${esc(l.notes || '')}"></div>
         
         <div style="display:flex;gap:12px">
             <button data-action="save-edit" style="flex:2;padding:16px;background:var(--sg);border-radius:14px;color:var(--wh);font-size:16px;font-weight:600;box-shadow:0 6px 16px rgba(123,175,142,.3)">Save Changes ✓</button>
@@ -1597,7 +1505,6 @@ function delLog(id) {
     showConfirm('Delete this groom record permanently?', () => {
         const log = S.logs.find(l => l.id === id);
         if (log) {
-            // Free up IDB storage — fire and forget, don't block the UI.
             if (log.before) deletePhoto(log.before);
             if (log.after)  deletePhoto(log.after);
         }
@@ -1699,8 +1606,8 @@ function renderStandards() {
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
                     <span style="font-size:16px;font-weight:600;color:var(--tx)">${esc(s.title)}</span>
                     <div>
-                        <button onclick="vib();S.editStdId='${s.id}';R()" style="font-size:13px;color:var(--ro);margin-right:12px;font-weight:600;">Edit</button>
-                        <button onclick="delStd('${s.id}')" style="font-size:16px;color:var(--di);font-weight:bold;">×</button>
+                        <button data-action="edit-std" data-id="${s.id}" style="font-size:13px;color:var(--ro);margin-right:12px;font-weight:600;">Edit</button>
+                        <button data-action="del-std" data-id="${s.id}" style="font-size:16px;color:var(--di);font-weight:bold;">×</button>
                     </div>
                 </div>
                 
@@ -1725,21 +1632,21 @@ function renderStdForm(existingId) {
     <div style="padding:18px;background:var(--ca);border-radius:14px;margin-bottom:16px;border:1px solid ${isEdit ? 'var(--co)' : 'var(--sg)'}40">
         <div style="font-size:13px;font-weight:600;color:${isEdit ? 'var(--co)' : 'var(--sg)'};margin-bottom:14px">${isEdit ? '✏️ Edit Standard' : '⏱️ New Pace Standard'}</div>
         
-        <div style="margin-bottom:14px"><label class="lbl">Title (e.g. Small/Med 3 Blade)</label><input class="inp" id="stdTitle" value="${esc(s.title)}"></div>
+        <div style="margin-bottom:14px"><label class="lbl" for="stdTitle">Title (e.g. Small/Med 3 Blade)</label><input class="inp" id="stdTitle" value="${esc(s.title)}"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-            <div><label class="lbl">Aim Time (min)</label><input class="inp" id="stdAim" type="number" value="${s.aim || ''}"></div>
-            <div><label class="lbl">Max Time (min)</label><input class="inp" id="stdMax" type="number" value="${s.max || ''}"></div>
+            <div><label class="lbl" for="stdAim">Aim Time (min)</label><input class="inp" id="stdAim" type="number" value="${s.aim || ''}"></div>
+            <div><label class="lbl" for="stdMax">Max Time (min)</label><input class="inp" id="stdMax" type="number" value="${s.max || ''}"></div>
         </div>
         
         <div style="margin-bottom:16px">
-            <label class="lbl">Step Breakdown</label>
+            <label class="lbl" for="stdText">Step Breakdown</label>
             <div style="font-size:11px;color:var(--mu);margin-bottom:6px;">Put each step on a new line.</div>
             <textarea class="inp" id="stdText" rows="6" placeholder="1. Pre work (nails, pads, sani) - 5-8 min\n2. Brush out - 10 min">${esc(s.text)}</textarea>
         </div>
         
         <div style="display:flex;gap:12px">
-            <button onclick="saveStd(${isEdit ? `'${s.id}'` : 'null'})" style="flex:2;padding:14px;background:${isEdit ? 'var(--co)' : 'var(--sg)'};border-radius:12px;color:var(--wh);font-size:14px;font-weight:600">${isEdit ? 'Save Changes' : 'Add Standard'}</button>
-            <button onclick="vib();S.showStdForm=false;S.editStdId=null;R()" style="flex:1;padding:14px 16px;border:1px solid var(--bd);border-radius:12px;color:var(--mu);font-size:14px;font-weight:500;">Cancel</button>
+            <button data-action="save-std" ${isEdit ? `data-id="${s.id}"` : ''} style="flex:2;padding:14px;background:${isEdit ? 'var(--co)' : 'var(--sg)'};border-radius:12px;color:var(--wh);font-size:14px;font-weight:600">${isEdit ? 'Save Changes' : 'Add Standard'}</button>
+            <button data-action="cancel-std-form" style="flex:1;padding:14px 16px;border:1px solid var(--bd);border-radius:12px;color:var(--mu);font-size:14px;font-weight:500;">Cancel</button>
         </div>
     </div>`;
 }
@@ -1774,7 +1681,7 @@ function renderBreeds() {
     <div class="c" style="padding:20px;margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
             <div style="font-size:11px;letter-spacing:1.5px;color:var(--lv);text-transform:uppercase;font-weight:600">📒 Your Breed Notes</div>
-            ${!showForm && !editKey ? `<button onclick="vib();S.showBreedForm=true;R()" style="padding:8px 16px;background:var(--rg);border:1px solid var(--ro);border-radius:10px;color:var(--rd);font-size:13px;font-weight:600">+ Add Breed</button>` : ''}
+            ${!showForm && !editKey ? `<button data-action="show-breed-form" style="padding:8px 16px;background:var(--rg);border:1px solid var(--ro);border-radius:10px;color:var(--rd);font-size:13px;font-weight:600">+ Add Breed</button>` : ''}
         </div>
 
         ${showForm ? renderBreedForm(null) : ''}
@@ -1811,15 +1718,15 @@ function renderBreedForm(existingKey) {
     <div style="padding:18px;background:var(--ca);border-radius:14px;margin-bottom:16px;border:1px solid ${isEdit ? 'var(--lv)' : 'var(--ro)'}40">
         <div style="font-size:13px;font-weight:600;color:${isEdit ? 'var(--lv)' : 'var(--rd)'};margin-bottom:14px">${isEdit ? '✏️ Edit ' + existingKey : '🐕 New Breed'}</div>
         
-        ${!isEdit ? `<div style="margin-bottom:14px"><label class="lbl">Breed Name *</label><input class="inp" id="bnName" placeholder="e.g. Shih Tzu" list="breedList"></div>` : ''}
+        ${!isEdit ? `<div style="margin-bottom:14px"><label class="lbl" for="bnName">Breed Name *</label><input class="inp" id="bnName" placeholder="e.g. Shih Tzu" list="breedList"></div>` : ''}
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-            <div><label class="lbl">Blade</label><input class="inp" id="bnBlade" placeholder="e.g. #7F" value="${esc(n.blade)}"></div>
-            <div><label class="lbl">Guard Comb</label><input class="inp" id="bnComb" placeholder="e.g. #1" value="${esc(n.comb)}"></div>
+            <div><label class="lbl" for="bnBlade">Blade</label><input class="inp" id="bnBlade" placeholder="e.g. #7F" value="${esc(n.blade)}"></div>
+            <div><label class="lbl" for="bnComb">Guard Comb</label><input class="inp" id="bnComb" placeholder="e.g. #1" value="${esc(n.comb)}"></div>
         </div>
         
-        <div style="margin-bottom:14px"><label class="lbl">Target Time (min)</label><input class="inp" id="bnTarget" type="number" inputmode="numeric" placeholder="e.g. 35" value="${n.targetMin || ''}"></div>
-        <div style="margin-bottom:16px"><label class="lbl">Style Notes / Tips</label><input class="inp" id="bnNotes" placeholder="e.g. Round head, fuller legs" value="${esc(n.notes)}"></div>
+        <div style="margin-bottom:14px"><label class="lbl" for="bnTarget">Target Time (min)</label><input class="inp" id="bnTarget" type="number" inputmode="numeric" placeholder="e.g. 35" value="${n.targetMin || ''}"></div>
+        <div style="margin-bottom:16px"><label class="lbl" for="bnNotes">Style Notes / Tips</label><input class="inp" id="bnNotes" placeholder="e.g. Round head, fuller legs" value="${esc(n.notes)}"></div>
         
         <div style="display:flex;gap:12px">
             <button data-action="save-breed" ${isEdit ? `data-key="${esc(existingKey)}"` : ''} style="flex:2;padding:14px;background:${isEdit ? 'var(--lv)' : 'var(--ro)'};border-radius:12px;color:var(--wh);font-size:14px;font-weight:600">${isEdit ? 'Save Changes' : 'Add Breed'}</button>
@@ -1852,8 +1759,8 @@ function renderGoals() {
     <div class="c" style="padding:20px;margin-bottom:16px">
         <div style="font-size:11px;letter-spacing:1.5px;color:var(--hn);text-transform:uppercase;font-weight:600;margin-bottom:16px">🎯 Your Goals</div>
         
-        <div style="margin-bottom:20px"><label class="lbl">Dogs Per Day Target</label><input class="inp" id="gD" type="number" inputmode="numeric" value="${S.goals.dogsPerDay || ''}" placeholder="e.g. 8" onchange="S.goals.dogsPerDay=Math.max(0,parseInt(this.value)||0);save()"></div>
-        <div style="margin-bottom:20px"><label class="lbl">Average Groom Time Target (min)</label><input class="inp" id="gA" type="number" inputmode="numeric" value="${S.goals.avgTarget || ''}" placeholder="e.g. 35" onchange="S.goals.avgTarget=Math.max(0,parseInt(this.value)||0);save()"></div>
+        <div style="margin-bottom:20px"><label class="lbl" for="gD">Dogs Per Day Target</label><input class="inp" id="gD" type="number" inputmode="numeric" value="${S.goals.dogsPerDay || ''}" placeholder="e.g. 8" onchange="S.goals.dogsPerDay=Math.max(0,parseInt(this.value)||0);save()"></div>
+        <div style="margin-bottom:20px"><label class="lbl" for="gA">Average Groom Time Target (min)</label><input class="inp" id="gA" type="number" inputmode="numeric" value="${S.goals.avgTarget || ''}" placeholder="e.g. 35" onchange="S.goals.avgTarget=Math.max(0,parseInt(this.value)||0);save()"></div>
         
         <div style="padding:16px;background:var(--ca);border-radius:14px">
             <div style="font-size:14px;font-weight:600;margin-bottom:10px;color:var(--tx)">Progress Snapshot</div>
@@ -2089,6 +1996,15 @@ function renderStats() {
             </label>
         </div>
     </div>
+
+    <div class="c" style="padding:20px;margin-bottom:20px">
+        <div style="font-size:11px;letter-spacing:1.5px;color:var(--sg);text-transform:uppercase;font-weight:600;margin-bottom:14px">📱 Install App</div>
+        <div style="font-size:13px;color:var(--tm);line-height:1.6">
+            <p><strong>iPhone (Safari):</strong> Tap the Share button at the bottom of the screen, then scroll down and tap "Add to Home Screen".</p>
+            <br>
+            <p><strong>Android (Chrome):</strong> Tap the 3 dots menu at the top right, then tap "Add to Home screen" or "Install app".</p>
+        </div>
+    </div>
     
     <div style="text-align:center;padding:10px 20px 40px">
         <button data-action="reset-all" style="font-size:13px;color:var(--di);text-decoration:underline;padding:10px">Reset All Data</button>
@@ -2098,20 +2014,14 @@ function renderStats() {
 async function exportData() {
     vib();
     try {
-        // Resolve any idb: photo refs back to inline data URLs so the backup
-        // file is self-contained. Someone restoring on another device or
-        // after clearing IDB can still recover their photos.
         const resolvedLogs = await Promise.all(S.logs.map(async l => ({
             ...l,
             before: l.before && l.before.startsWith?.('idb:') ? await loadPhoto(l.before) : l.before,
             after:  l.after  && l.after.startsWith?.('idb:')  ? await loadPhoto(l.after)  : l.after
         })));
         const payload = { ...S, logs: resolvedLogs, schemaVersion: SCHEMA_VERSION };
-        // Don't ship the transient timer photo ref in the backup.
         delete payload.timerBeforePhoto;
         const json = JSON.stringify(payload);
-        // Use a Blob URL rather than data: URL. Data URLs fail on iOS Safari
-        // over a certain size. Blob URLs work reliably.
         const blob = new Blob([json], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -2128,15 +2038,10 @@ async function exportData() {
     }
 }
 
-// Validates an imported backup object's shape before applying it to state.
-// Returns a cleaned, safe-to-use state object, or null if it's garbage.
 function sanitizeImport(raw) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-    // Must have a logs array — this is the minimum for a valid GroomPace backup.
     if (!Array.isArray(raw.logs)) return null;
     
-    // Build a clean object, only pulling known fields. This protects against
-    // a malicious or corrupted file injecting unexpected properties into state.
     const clean = {
         logs: raw.logs
             .filter(l => l && typeof l === 'object' && typeof l.breed === 'string' && typeof l.min === 'number')
@@ -2159,7 +2064,6 @@ function sanitizeImport(raw) {
                 diff: [1,2,3].includes(l.diff) ? l.diff : 1,
                 notes: String(l.notes || ''),
                 timed: !!l.timed,
-                // Photos are data: URIs — only accept strings that look right.
                 before: (typeof l.before === 'string' && l.before.startsWith('data:image/')) ? l.before : null,
                 after:  (typeof l.after  === 'string' && l.after.startsWith('data:image/')) ? l.after : null
             })),
@@ -2180,7 +2084,6 @@ function importData(e) {
     const file = e.target.files[0];
     if (!file) return;
     
-    // Guard against huge files that could lock up the browser.
     if (file.size > 20 * 1024 * 1024) {
         showToast('File is too large to import (over 20MB).', 'error', 6000);
         return;
@@ -2195,8 +2098,6 @@ function importData(e) {
                 showToast('That file doesn\'t look like a GroomPace backup.', 'error', 6000);
                 return;
             }
-            // Move inline photo data URLs into IDB, replacing with idb: refs.
-            // This keeps localStorage small even after a large restore.
             for (const log of clean.logs) {
                 if (log.before && log.before.startsWith?.('data:image/')) {
                     log.before = await savePhoto(log.before);
@@ -2205,7 +2106,6 @@ function importData(e) {
                     log.after = await savePhoto(log.after);
                 }
             }
-            // Apply only the whitelisted fields.
             Object.assign(S, clean);
             save();
             hydratePhotosForView();
@@ -2223,36 +2123,30 @@ function importData(e) {
 }
 
 // ── Background / Visibility Handling ──
-// When the tab/app goes to the background, browsers throttle setInterval.
-// When it comes back, we force an immediate repaint so the timer display
-// doesn't show a stale value for up to 200ms while the interval catches up.
-// The underlying elapsed time is always correct (computed from timerStart
-// timestamp) — this just makes sure the DOM reflects it the instant the
-// user looks at the screen.
 document.addEventListener('visibilitychange', () => {
     if (!document.hidden && S.timerRunning) {
         paintTimer();
     }
 });
 
-// iOS Safari sometimes freezes the tab entirely on backgrounding without
-// firing visibilitychange when it wakes. pageshow is the safety net.
 window.addEventListener('pageshow', () => {
     if (S.timerRunning) paintTimer();
 });
 
-// Also save state when the tab is about to be closed or put away, so any
-// pending changes that haven't been committed through save() yet get flushed.
 window.addEventListener('beforeunload', () => {
     try { save(); } catch(e) {}
 });
 
+// ── PWA Service Worker Registration ──
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW registration failed:', err));
+    });
+}
+
 // ── Init ──
 load();
 R();
-// Asynchronously load any photos referenced by logs into the runtime cache,
-// then re-render. First paint happens without photos (fast); they fill in
-// a moment later. This keeps the initial load snappy even with many logs.
 hydratePhotosForView();
 </script>
 </body>
