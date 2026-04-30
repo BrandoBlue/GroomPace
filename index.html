@@ -161,6 +161,44 @@ const GUARDS = [
     {n:'#4',len:'1½"',mm:'38'},      {n:'#5',len:'2"',mm:'50'},
 ];
 
+// Common breeds groomers see most often. Used to seed the breed dropdown
+// so the user has options before they've logged anything. The user can
+// still type breeds not on this list — datalist suggests but doesn't enforce.
+const COMMON_BREEDS = [
+    // Doodles & designer mixes
+    'Goldendoodle', 'Labradoodle', 'Bernedoodle', 'Sheepadoodle', 'Aussiedoodle',
+    'Cockapoo', 'Cavapoo', 'Maltipoo', 'Shih-Poo', 'Yorkipoo', 'Schnoodle',
+    'Pomapoo', 'Havapoo', 'Whoodle', 'Pyredoodle',
+    // Poodles
+    'Standard Poodle', 'Miniature Poodle', 'Toy Poodle',
+    // Small breeds (frequent)
+    'Shih Tzu', 'Maltese', 'Yorkshire Terrier', 'Bichon Frise', 'Havanese',
+    'Pomeranian', 'Cavalier King Charles Spaniel', 'Lhasa Apso', 'Pekingese',
+    'Coton de Tulear', 'Brussels Griffon', 'Pug', 'French Bulldog',
+    'Boston Terrier', 'Chihuahua', 'Papillon', 'Italian Greyhound', 'Dachshund',
+    // Terriers
+    'West Highland White Terrier', 'Scottish Terrier', 'Cairn Terrier',
+    'Norwich Terrier', 'Norfolk Terrier', 'Wire Fox Terrier',
+    'Soft Coated Wheaten Terrier', 'Airedale Terrier', 'Jack Russell Terrier',
+    'Welsh Terrier',
+    // Spaniels & setters
+    'Cocker Spaniel', 'English Springer Spaniel', 'English Cocker Spaniel',
+    'Brittany', 'Irish Setter', 'Gordon Setter',
+    // Sporting & working
+    'Golden Retriever', 'Labrador Retriever', 'German Shepherd',
+    'Australian Shepherd', 'Border Collie', 'Bernese Mountain Dog',
+    'Old English Sheepdog', 'Newfoundland', 'Saint Bernard', 'Great Pyrenees',
+    'Samoyed', 'Siberian Husky', 'Alaskan Malamute', 'Schipperke',
+    // Schnauzers
+    'Miniature Schnauzer', 'Standard Schnauzer', 'Giant Schnauzer',
+    // Other common visitors
+    'Bouvier des Flandres', 'Portuguese Water Dog', 'Briard', 'Komondor',
+    'Puli', 'Tibetan Terrier', 'Affenpinscher', 'Chinese Crested',
+    'Shiba Inu', 'American Eskimo',
+    // Catch-alls
+    'Mixed Breed', 'Mutt', 'Other'
+];
+
 const ACH = [
     {id:'first', e:'🐾', t:'First Groom', d:'Log your first groom', ck: s => s.logs.length >= 1},
     {id:'five', e:'✋', t:'High Five', d:'Log 5 grooms', ck: s => s.logs.length >= 5},
@@ -799,7 +837,13 @@ function updateDatalist() {
     const bList = document.getElementById('breedList');
     const dList = document.getElementById('dogNameList');
     if (bList) {
-        const breeds = [...new Set([...S.logs.map(l => l.breed), ...Object.keys(S.breedNotes)])].filter(Boolean);
+        // Merge: starter list + breeds she's logged + breeds she has notes for.
+        // Set dedupes; sort keeps the dropdown predictable.
+        const breeds = [...new Set([
+            ...COMMON_BREEDS,
+            ...S.logs.map(l => l.breed),
+            ...Object.keys(S.breedNotes)
+        ])].filter(Boolean).sort();
         bList.innerHTML = breeds.map(b => `<option value="${esc(b)}">`).join('');
     }
     if (dList) {
