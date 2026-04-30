@@ -193,6 +193,7 @@ let S = {
     
     // Timer State
     timerStart: null, timerRunning: false, timerSplits: [],
+    timerPausedAt: null, timerTotalPausedDuration: 0,
     timerBreed: '', timerStyle: '', timerSize: 'medium', timerDogName: '', timerBeforePhoto: null,
     timerReview: null, timerGhost: null, 
     
@@ -381,6 +382,8 @@ function load() {
             S.timerRunning = false;
             S.timerReview = S.timerReview || null;
             S.timerGhost = null; // reset ghost on load
+            S.timerPausedAt = null; // clear pause state on fresh load
+            S.timerTotalPausedDuration = 0;
             S.tab = 'home';
             S.sub = 'blades';
             S.sub2 = 'achievements';
@@ -398,6 +401,8 @@ function load() {
             if (!Array.isArray(S.logs)) S.logs = [];
             if (!Array.isArray(S.timerSplits)) S.timerSplits = [];
             if (S.timerStart !== null && typeof S.timerStart !== 'number') S.timerStart = null;
+            if (S.timerPausedAt === undefined) S.timerPausedAt = null;
+            if (S.timerTotalPausedDuration === undefined) S.timerTotalPausedDuration = 0;
         }
     } catch(e) {
         console.error('Failed to load saved data:', e);
@@ -435,7 +440,16 @@ function tc(m) { return m <= 25 ? 'var(--sg)' : m <= 40 ? 'var(--hn)' : 'var(--r
 function dk() { return new Date().toISOString().slice(0, 10); }
 function fmtT(ms) { const s = Math.floor(ms/1000), m = Math.floor(s/60); return String(m).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); }
 function fmtM(ms) { return Math.round(ms/60000); }
-function elapsed() { return S.timerStart ? Date.now() - S.timerStart : 0; }
+
+function elapsed() {
+    if (!S.timerStart) return 0;
+    const pausedDur = S.timerTotalPausedDuration || 0;
+    if (S.timerPausedAt) {
+        return S.timerPausedAt - S.timerStart - pausedDur;
+    }
+    return Date.now() - S.timerStart - pausedDur;
+}
+
 function getAvg() { return S.logs.length ? Math.round(S.logs.reduce((a,l) => a + l.min, 0) / S.logs.length) : null; }
 function trend() {
     if (S.logs.length < 6) return null;
@@ -550,20 +564,42 @@ function compressPhoto(file, cb) {
 }
 
 // ── Lightbox Swipe Support ──
-let _lbTouchStartX = 0;
-window.lbTS = function(e) {
-    _lbTouchStartX = e.changedTouches[0].screenX;
-};
-window.lbTE = function(e) {
+let _swipeStartX = 0;
+let _isSwiping = false;
+let _lastSwipeTime = 0;
+
+function handleSwipe(endX) {
     if (!_lightbox || !_lightbox.refs || _lightbox.refs.length < 2) return;
-    const endX = e.changedTouches[0].screenX;
-    const diff = _lbTouchStartX - endX;
-    if (diff > 50 && _lightbox.index < _lightbox.refs.length - 1) {
-        vib(); _lightbox.index++; R();
-    } else if (diff < -50 && _lightbox.index > 0) {
-        vib(); _lightbox.index--; R();
+    const diff = _swipeStartX - endX;
+    
+    // If they moved their finger/mouse more than 50 pixels, it's a swipe
+    if (Math.abs(diff) > 50) {
+        _lastSwipeTime = Date.now(); // Record the time so we don't accidentally close the modal
+        if (diff > 50 && _lightbox.index < _lightbox.refs.length - 1) {
+            vib(); _lightbox.index++; R();
+        } else if (diff < -50 && _lightbox.index > 0) {
+            vib(); _lightbox.index--; R();
+        }
     }
-};
+}
+
+// Touch support (Mobile)
+document.addEventListener('touchstart', e => {
+    if (_lightbox) _swipeStartX = e.changedTouches[0].screenX;
+}, {passive: true});
+
+document.addEventListener('touchend', e => {
+    if (_lightbox) handleSwipe(e.changedTouches[0].screenX);
+}, {passive: true});
+
+// Mouse support (Desktop Testing)
+document.addEventListener('mousedown', e => {
+    if (_lightbox) { _swipeStartX = e.screenX; _isSwiping = true; }
+});
+
+document.addEventListener('mouseup', e => {
+    if (_isSwiping && _lightbox) { _isSwiping = false; handleSwipe(e.screenX); }
+});
 
 // ── Timer Core ──
 function startTimer() { 
@@ -572,11 +608,30 @@ function startTimer() {
     S.timerRunning = true; 
     S.timerSplits = []; 
     S.timerReview = null; 
+    S.timerPausedAt = null;
+    S.timerTotalPausedDuration = 0;
     
     // Ghost Racer Logic Initialization
     S.timerGhost = getGhostTime(S.timerDogName, S.timerBreed);
     
     save(); tick(); R(); 
+}
+
+function togglePause() {
+    vib();
+    if (S.timerPausedAt) {
+        // Resume
+        S.timerTotalPausedDuration += (Date.now() - S.timerPausedAt);
+        S.timerPausedAt = null;
+        tick(); // restart the UI refresh loop
+    } else {
+        // Pause
+        S.timerPausedAt = Date.now();
+        clearInterval(TI);
+        TI = null;
+        paintTimer(); // Paint one last time to secure the exact paused visual state
+    }
+    save(); R();
 }
 
 function paintTimer() {
@@ -598,7 +653,10 @@ function paintTimer() {
                     bar.style.width = pct + '%';
                     icon.style.left = `calc(${pct}% - 8px)`;
                     
-                    if (elMs <= targetMs) {
+                    if (S.timerPausedAt) {
+                        status.textContent = `⏸ Paused...`;
+                        status.style.color = 'var(--mu)';
+                    } else if (elMs <= targetMs) {
                         const leftMs = targetMs - elMs;
                         bar.style.background = 'linear-gradient(90deg, #7BAF8E, #A3D2B5)';
                         status.textContent = `👻 Ahead of ghost! (${fmtT(leftMs)} to beat PB)`;
@@ -625,12 +683,15 @@ function paintTimer() {
 
 function tick() {
     clearInterval(TI);
-    TI = setInterval(paintTimer, 200);
+    if (!S.timerPausedAt) {
+        TI = setInterval(paintTimer, 200);
+    }
 }
 
 function split(label) {
     vib(); 
-    S.timerSplits.push({ label, time: Date.now() }); 
+    // We store 'elapsed' so split math perfectly ignores any paused time
+    S.timerSplits.push({ label, elapsed: elapsed(), time: Date.now() }); 
     save(); R(); 
 }
 
@@ -642,11 +703,26 @@ function stopTimer() {
     const sp = S.timerSplits;
     
     let pw=0, bo=0, bs=0, sl=0, hf=0, ta=0, fi=0;
-    let lastTime = S.timerStart;
+    
+    // We use lastElapsed (from elapsed()) instead of pure Date.now()
+    // so pauses are perfectly subtracted from section times.
+    let lastElapsed = 0; 
+    let lastTime = S.timerStart; 
+    
     const stMap = { pw: 'Prework', bo: 'Brush', bs: 'Shave', sl: 'Legs/Feet', hf: 'Head/Face', ta: 'Tail', fi: 'Finished' };
     
     const parsedSplits = sp.map(x => {
-        const durMs = x.time - lastTime;
+        let durMs = 0;
+        
+        // Use true elapsed time (ignores pauses) if available, otherwise fallback to old time method
+        if (x.elapsed !== undefined) {
+            durMs = x.elapsed - lastElapsed;
+            lastElapsed = x.elapsed;
+        } else {
+            durMs = x.time - lastTime;
+            lastTime = x.time;
+        }
+        
         const durM = fmtM(durMs);
         
         if(x.label === 'pw') pw = durM;
@@ -657,7 +733,6 @@ function stopTimer() {
         if(x.label === 'ta') ta = durM;
         if(x.label === 'fi') fi = durM;
         
-        lastTime = x.time;
         return { label: stMap[x.label] || x.label, dur: fmtT(durMs) };
     });
 
@@ -681,6 +756,7 @@ function stopTimer() {
 function cancelTimer() {
     vib(); clearInterval(TI); 
     S.timerStart = null; S.timerRunning = false; 
+    S.timerPausedAt = null; S.timerTotalPausedDuration = 0;
     S.timerSplits = []; S.timerReview = null; 
     S.timerBeforePhoto = null; S.timerDogName = ''; 
     S.timerBreed = ''; S.timerStyle = '';
@@ -780,7 +856,7 @@ function R() {
         const multi = _lightbox.refs.length > 1;
         
         mod.innerHTML = `
-        <div data-action="close-photo" ontouchstart="lbTS(event)" ontouchend="lbTE(event)" style="position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;" class="fi">
+        <div data-action="close-photo" style="position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;" class="fi">
             
             <div style="position:absolute;top:calc(env(safe-area-inset-top,12px) + 20px);left:0;right:0;display:flex;justify-content:center;pointer-events:none;">
                 <span style="background:rgba(255,255,255,0.15);padding:6px 16px;border-radius:20px;color:#fff;font-weight:600;font-size:14px;letter-spacing:1px;text-transform:uppercase;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
@@ -887,6 +963,7 @@ const ACTIONS = {
     'show-std-form':     ()   => { vib(); S.showStdForm = true; R(); },
     'cancel-std-form':   ()   => { vib(); S.showStdForm = false; S.editStdId = null; R(); },
     'split':             (el) => split(el.dataset.split),
+    'toggle-pause':      ()   => togglePause(),
     'submit-log':        ()   => submitLog(),
     'save-edit':         ()   => saveEdit(),
     'save-breed':        (el) => saveBreedNote(el.dataset.key || null),
@@ -928,7 +1005,11 @@ const ACTIONS = {
     },
     'lb-prev':           ()   => { if (_lightbox && _lightbox.index > 0) { vib(); _lightbox.index--; R(); } },
     'lb-next':           ()   => { if (_lightbox && _lightbox.index < _lightbox.refs.length - 1) { vib(); _lightbox.index++; R(); } },
-    'close-photo':       ()   => { vib(); _lightbox = null; R(); },
+    'close-photo':       ()   => { 
+        // If they just swiped less than 300ms ago, ignore the close action!
+        if (Date.now() - _lastSwipeTime < 300) return; 
+        vib(); _lightbox = null; R(); 
+    },
     'save-review':       ()   => saveReview(),
     'discard-review':    ()   => discardReview(),
     'start-timer-setup': ()   => {
@@ -1238,7 +1319,14 @@ function renderTimer() {
         <div style="font-size:14px;color:var(--mu);margin-bottom:8px;font-weight:500;">
             ${S.timerDogName ? esc(S.timerDogName) + ' · ' : ''}${esc(S.timerBreed)}${S.timerStyle ? ' · ' + esc(S.timerStyle) : ''}
         </div>
-        <div class="timer-num run" id="tn">${fmtT(elapsed())}</div>
+        
+        <div class="timer-num run" id="tn" style="${S.timerPausedAt ? 'color:var(--mu);' : ''}">${fmtT(elapsed())}</div>
+        
+        <div style="text-align:center; margin-top:-4px; margin-bottom:16px;">
+            <button data-action="toggle-pause" style="padding:8px 24px; background:var(--ca); border-radius:20px; font-weight:600; font-size:14px; color:var(--tm); border:1px solid var(--bd);">
+                ${S.timerPausedAt ? '▶ Resume' : '⏸ Pause'}
+            </button>
+        </div>
         
         ${S.timerGhost ? `
         <div class="c" style="margin: 24px auto; max-width: 340px; padding: 18px; border: 1px solid rgba(0,0,0,0.05); background: rgba(255,255,255,0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 4px 24px rgba(0,0,0,0.04);">
@@ -1256,9 +1344,10 @@ function renderTimer() {
         ` : ''}
 
         <div style="display:flex;gap:8px;justify-content:center;margin:24px 0;flex-wrap:wrap;max-width:340px;margin-left:auto;margin-right:auto;">
+            <div style="width:100%; font-size:11px; color:var(--mu); font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Tap when you finish a step:</div>
             ${splitBtns.map(s => {
                 const d = done.includes(s.l);
-                const clickable = run && !d;
+                const clickable = run && !d && !S.timerPausedAt;
                 return `<button ${clickable ? `data-action="split" data-split="${esc(s.l)}"` : ''} style="padding:10px 14px;border-radius:12px;font-size:13px;font-weight:600;${d ? 'background:var(--ss);color:var(--sg);' : 'background:var(--card);border:1px solid var(--bd);color:var(--tm);box-shadow:var(--sh);'} ${!clickable ? 'opacity:.5;' : ''}">${s.e} ${s.t}${d ? ' ✓' : ''}</button>`;
             }).join('')}
         </div>
@@ -1266,11 +1355,11 @@ function renderTimer() {
         ${sp.length ? `
         <div class="c" style="padding:18px;margin-bottom:28px;text-align:left">
             ${sp.map((x,i) => {
-                const prev = i === 0 ? S.timerStart : sp[i-1].time;
+                const prev = i === 0 ? 0 : sp[i-1].elapsed;
                 return `
                 <div style="display:flex;justify-content:space-between;padding:8px 0;${i < sp.length - 1 ? 'border-bottom:1px solid var(--bl)' : ''}">
                     <span style="font-size:14px;color:var(--tm);text-transform:capitalize">${stMap[x.label] || x.label}</span>
-                    <span style="font-size:14px;font-weight:600">${fmtT(x.time - prev)}</span>
+                    <span style="font-size:14px;font-weight:600">${fmtT(x.elapsed - prev)}</span>
                 </div>`;
             }).join('')}
         </div>` : ''}
@@ -2269,13 +2358,17 @@ function importData(e) {
 
 // ── Background / Visibility Handling ──
 document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && S.timerRunning) {
+    if (!document.hidden && S.timerRunning && !S.timerPausedAt) {
         paintTimer();
+        tick();
     }
 });
 
 window.addEventListener('pageshow', () => {
-    if (S.timerRunning) paintTimer();
+    if (S.timerRunning && !S.timerPausedAt) {
+        paintTimer();
+        tick();
+    }
 });
 
 window.addEventListener('beforeunload', () => {
