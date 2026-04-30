@@ -124,7 +124,7 @@ textarea.inp { resize: vertical; min-height: 60px; }
     <datalist id="dogNameList"></datalist>
 </div>
 <script>
-const SK = 'groompace-v4';
+const SK = 'groompace-v5';
 
 // ── PWA Install Prompt Logic ──
 let _deferredPrompt = null;
@@ -194,7 +194,7 @@ let S = {
     // Timer State
     timerStart: null, timerRunning: false, timerSplits: [],
     timerBreed: '', timerStyle: '', timerSize: 'medium', timerDogName: '', timerBeforePhoto: null,
-    timerReview: null, 
+    timerReview: null, timerGhost: null, 
     
     // UI State
     showForm: false, editId: null, 
@@ -362,13 +362,24 @@ function migrate(state) {
 function load() {
     _resetting = false;
     try {
-        const raw = localStorage.getItem(SK);
+        let raw = localStorage.getItem(SK);
+        
+        // Smart Data Migration Backup: If v5 is empty, grab the data from v4 or v3
+        if (!raw) {
+            raw = localStorage.getItem('groompace-v4') || localStorage.getItem('groompace-v3');
+            if (raw) {
+                localStorage.setItem(SK, raw); // Save it to the new v5 key safely
+                console.log("Successfully migrated previous app data to v5.");
+            }
+        }
+
         if (raw) {
             let data = JSON.parse(raw);
             data = migrate(data);
             Object.assign(S, data);
             S.timerRunning = false;
             S.timerReview = S.timerReview || null;
+            S.timerGhost = null; // reset ghost on load
             S.tab = 'home';
             S.sub = 'blades';
             S.sub2 = 'achievements';
@@ -461,6 +472,13 @@ function getDogNames() {
 function getDogHistory(name) {
     return S.logs.filter(l => (l.dogName || '').toLowerCase() === name.toLowerCase()).sort((a,b) => b.ts - a.ts);
 }
+function getGhostTime(dogName, breed) {
+    let logs = [];
+    if (dogName) logs = S.logs.filter(l => (l.dogName||'').toLowerCase() === dogName.toLowerCase());
+    if (!logs.length && breed) logs = S.logs.filter(l => (l.breed||'').toLowerCase() === breed.toLowerCase());
+    if (!logs.length) return null;
+    return Math.min(...logs.map(l => l.min));
+}
 
 // ── UI Actions ──
 function vib() { if (navigator.vibrate) navigator.vibrate(40); }
@@ -537,6 +555,10 @@ function startTimer() {
     S.timerRunning = true; 
     S.timerSplits = []; 
     S.timerReview = null; 
+    
+    // Ghost Racer Logic Initialization
+    S.timerGhost = getGhostTime(S.timerDogName, S.timerBreed);
+    
     save(); tick(); R(); 
 }
 
@@ -544,7 +566,35 @@ function paintTimer() {
     try {
         const el = document.getElementById('tn');
         if (el) {
-            el.textContent = fmtT(elapsed());
+            const elMs = elapsed();
+            el.textContent = fmtT(elMs);
+            
+            // Ghost Racing Live Paint
+            if (S.timerGhost) {
+                const targetMs = S.timerGhost * 60000;
+                const pct = Math.min((elMs / targetMs) * 100, 100);
+                const bar = document.getElementById('ghostBar');
+                const icon = document.getElementById('ghostIcon');
+                const status = document.getElementById('ghostStatus');
+                
+                if (bar && icon && status) {
+                    bar.style.width = pct + '%';
+                    icon.style.left = `calc(${pct}% - 8px)`;
+                    
+                    if (elMs <= targetMs) {
+                        const leftMs = targetMs - elMs;
+                        bar.style.background = 'linear-gradient(90deg, #7BAF8E, #A3D2B5)';
+                        status.textContent = `👻 Ahead of ghost! (${fmtT(leftMs)} to beat PB)`;
+                        status.style.color = 'var(--sg)';
+                    } else {
+                        const overMs = elMs - targetMs;
+                        bar.style.background = 'var(--co)';
+                        icon.textContent = '🐢'; // Turns into a turtle if you fall behind!
+                        status.textContent = `⚠️ Ghost finished ${fmtT(overMs)} ago`;
+                        status.style.color = 'var(--co)';
+                    }
+                }
+            }
         } else if (!S.timerRunning) {
             clearInterval(TI);
             TI = null;
@@ -607,6 +657,7 @@ function stopTimer() {
     
     S.timerStart = null; 
     S.timerSplits = []; 
+    S.timerGhost = null; 
     save(); R();
 }
 
@@ -615,6 +666,8 @@ function cancelTimer() {
     S.timerStart = null; S.timerRunning = false; 
     S.timerSplits = []; S.timerReview = null; 
     S.timerBeforePhoto = null; S.timerDogName = ''; 
+    S.timerBreed = ''; S.timerStyle = '';
+    S.timerGhost = null;
     save(); R();
 }
 
@@ -635,6 +688,7 @@ function saveReview() {
     });
     
     S.timerReview = null; S.timerBeforePhoto = null; S.timerDogName = ''; 
+    S.timerBreed = ''; S.timerStyle = '';
     _rvDf = 1; _rvAfter = null; 
     save(); S.tab = 'log'; R();
 }
@@ -642,6 +696,7 @@ function saveReview() {
 function discardReview() {
     showConfirm("Discard this timed groom?", () => {
         S.timerReview = null; S.timerBeforePhoto = null; S.timerDogName = ''; 
+        S.timerBreed = ''; S.timerStyle = '';
         _rvDf = 1; _rvAfter = null; save(); R();
     });
 }
@@ -886,7 +941,7 @@ function renderOnboard() {
         
         <div style="display:flex;flex-direction:column;gap:14px;width:100%;max-width:280px;margin-bottom:40px;text-align:left">
             ${[
-                '⏱️ Live timer with section splits',
+                '⏱️ Live timer with Ghost Racing 👻',
                 '📸 Before & after photos',
                 '🐕 Track returning dogs over time',
                 '📊 Trends & personal bests',
@@ -1074,7 +1129,7 @@ function renderTimer() {
             
             <div class="c" style="padding:22px;margin-bottom:18px">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-                    <div><label class="lbl" for="tDN">Dog Name</label><input class="inp" id="tDN" placeholder="e.g. Bella" value="${esc(S.timerDogName)}" list="dogNameList"></div>
+                    <div><label class="lbl" for="tDN">Dog & Last Name</label><input class="inp" id="tDN" placeholder="e.g. Bella Smith" value="${esc(S.timerDogName)}" list="dogNameList"></div>
                     <div><label class="lbl" for="tB">Breed</label><input class="inp" id="tB" placeholder="e.g. Goldendoodle" value="${esc(S.timerBreed)}" list="breedList"></div>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
@@ -1114,6 +1169,21 @@ function renderTimer() {
         </div>
         <div class="timer-num run" id="tn">${fmtT(elapsed())}</div>
         
+        ${S.timerGhost ? `
+        <div class="c" style="margin: 24px auto; max-width: 340px; padding: 18px; border: 1px solid rgba(0,0,0,0.05); background: rgba(255,255,255,0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 4px 24px rgba(0,0,0,0.04);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <span style="font-size:13px; font-weight:700; color:var(--tx); display:flex; align-items:center; gap:6px;">👻 Ghost Pace</span>
+                <span style="font-size:12px; font-weight:600; color:var(--mu); background:var(--ca); padding:4px 8px; border-radius:8px;">PB: ${S.timerGhost}m</span>
+            </div>
+            <div style="height:8px; background:var(--bl); border-radius:4px; position:relative; overflow:visible; margin: 0 10px;">
+                <div style="position:absolute; right:-14px; top:-8px; font-size:18px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));">👻</div>
+                <div id="ghostBar" style="position:absolute; left:0; top:0; height:100%; border-radius:4px; background:linear-gradient(90deg, #7BAF8E, #A3D2B5); width:0%; transition: width 0.5s ease-out, background 0.5s ease;"></div>
+                <div id="ghostIcon" style="position:absolute; top:-8px; left:0%; font-size:16px; transition: left 0.5s ease-out; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)); z-index:2;">✂️</div>
+            </div>
+            <div id="ghostStatus" style="font-size:12px; color:var(--sg); margin-top:16px; text-align:center; font-weight:600;">Racing...</div>
+        </div>
+        ` : ''}
+
         <div style="display:flex;gap:8px;justify-content:center;margin:24px 0;flex-wrap:wrap;max-width:340px;margin-left:auto;margin-right:auto;">
             ${splitBtns.map(s => {
                 const d = done.includes(s.l);
@@ -1146,7 +1216,7 @@ function timerBeforePhoto() {
     if(!f) return;
     compressPhoto(f, async d => {
         const ref = await savePhoto(d);
-        _photoCache[ref] = d; // cache so it renders immediately
+        _photoCache[ref] = d;
         S.timerBeforePhoto = ref;
         save();
         R();
@@ -1254,6 +1324,10 @@ function renderChart(logs) {
                 <div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--mu);font-weight:600;white-space:nowrap">${l.min}</div>
             </div>`;
         }).join('')}
+    </div>
+    <div style="display:flex;justify-content:space-between;border-top:2px solid var(--bd);margin-top:6px;padding-top:6px;font-size:10px;color:var(--di);font-weight:600;text-transform:uppercase;letter-spacing:1px;">
+        <span>Older</span>
+        <span>Newer →</span>
     </div>`;
 }
 
@@ -1273,7 +1347,7 @@ function renderLogForm() {
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-            <div><label class="lbl" for="fDN">Dog Name</label><input class="inp" id="fDN" placeholder="e.g. Bella" list="dogNameList"></div>
+            <div><label class="lbl" for="fDN">Dog & Last Name</label><input class="inp" id="fDN" placeholder="e.g. Bella Smith" list="dogNameList"></div>
             <div><label class="lbl" for="fB">Breed *</label><input class="inp" id="fB" placeholder="e.g. Shih Tzu" list="breedList"></div>
         </div>
         
@@ -1401,7 +1475,7 @@ function renderEditForm() {
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-            <div><label class="lbl" for="eDN">Dog Name</label><input class="inp" id="eDN" value="${esc(l.dogName || '')}" list="dogNameList"></div>
+            <div><label class="lbl" for="eDN">Dog & Last Name</label><input class="inp" id="eDN" value="${esc(l.dogName || '')}" list="dogNameList"></div>
             <div><label class="lbl" for="eB">Breed *</label><input class="inp" id="eB" value="${esc(l.breed || '')}" list="breedList"></div>
         </div>
         
@@ -1832,7 +1906,7 @@ function renderDogs() {
     <div class="c" style="padding:20px;margin-bottom:16px">
         <div style="font-size:11px;letter-spacing:1.5px;color:var(--lv);text-transform:uppercase;font-weight:600;margin-bottom:16px">🐕 Dog History</div>
         
-        ${dogs.length === 0 ? `<div style="text-align:center;padding:30px;color:var(--di);font-size:14px">No dogs with names logged yet.<br>Add a name when logging to track returning clients.</div>` : ''}
+        ${dogs.length === 0 ? `<div style="text-align:center;padding:30px;color:var(--di);font-size:14px">No dogs logged yet.<br>Add a Dog & Last Name when logging to track returning clients.</div>` : ''}
         
         ${rpt.length ? `
         <div style="font-size:12px;color:var(--mu);margin-bottom:12px;font-weight:600">RETURNING CLIENTS (${rpt.length})</div>
