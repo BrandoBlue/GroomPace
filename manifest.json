@@ -1,7 +1,7 @@
 {
   "name": "GroomPace",
   "short_name": "GroomPace",
-  "description": "Your Personal Grooming Speed Tracker",
+  "description": "Track groom times, beat personal bests, and grow your speed — built for professional dog groomers.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#FBF7F2",

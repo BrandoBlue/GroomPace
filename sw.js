@@ -1,67 +1,78 @@
-const CACHE_NAME = 'groompace-v0.5.2';
+const CACHE_NAME = 'groompace-v0.6.3';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
+  './style.css',
+  './app.js',
   './manifest.json',
   'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..700&family=Fraunces:opsz,wght@9..144,400..700&display=swap'
 ];
 
-// Install event: Cache our basic assets
+const CORE_ASSETS = ['./index.html', './style.css', './app.js'];
+const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
+
+function isCoreAsset(url) {
+  return CORE_ASSETS.some(p => url.includes(p.replace('./', '')));
+}
+
+function isFontRequest(url) {
+  return FONT_HOSTS.some(h => url.includes(h));
+}
+
+function cacheableResponse(response) {
+  if (!response || response.status !== 200) return false;
+  return response.type === 'basic' || response.type === 'cors';
+}
+
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
+    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS_TO_CACHE))
   );
   self.skipWaiting();
 });
 
-// Activate event: Clean up old caches
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cache => {
-          if (cache !== CACHE_NAME) {
-            return caches.delete(cache);
-          }
-        })
-      );
-    })
+    caches.keys().then(cacheNames =>
+      Promise.all(cacheNames.map(cache => cache !== CACHE_NAME ? caches.delete(cache) : null))
+    )
   );
   self.clients.claim();
 });
 
-// Fetch event: Network-first for index.html (so they get updates), Cache-first for everything else
 self.addEventListener('fetch', event => {
-  // Always try network first for the main HTML file to ensure updates arrive
-  if (event.request.mode === 'navigate' || event.request.url.includes('index.html')) {
+  const url = event.request.url;
+
+  // Network-first for app shell so HTML/CSS/JS stay in sync on deploy
+  if (event.request.mode === 'navigate' || isCoreAsset(url)) {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match('./index.html'))
+      fetch(event.request)
+        .then(response => {
+          if (cacheableResponse(response)) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request).then(r => r || caches.match('./index.html')))
     );
     return;
   }
 
-  // Cache-first for Google Fonts, manifest, icons, etc.
   event.respondWith(
     caches.match(event.request).then(cachedResponse => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
+      if (cachedResponse) return cachedResponse;
       return fetch(event.request).then(networkResponse => {
-        // Don't cache bad responses or non-GET requests
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic' || event.request.method !== 'GET') {
-          return networkResponse;
+        const canCache = cacheableResponse(networkResponse) && event.request.method === 'GET'
+          && (networkResponse.type === 'basic' || isFontRequest(url));
+        if (canCache) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
         }
-        // Save the fresh asset to the cache
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then(cache => {
-          cache.put(event.request, responseToCache);
-        });
         return networkResponse;
       }).catch(() => {
-        // Offline and not in cache
-        return null;
+        if (event.request.mode === 'navigate') return caches.match('./index.html');
+        return Response.error();
       });
     })
   );
