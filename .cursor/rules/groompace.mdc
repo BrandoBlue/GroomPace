@@ -1,0 +1,59 @@
+---
+description: GroomPace project rules — architecture, sacred invariants, code patterns, design system, and workflow
+alwaysApply: true
+---
+
+# GroomPace — Project Rules
+
+## What this is
+A groom-speed tracker PWA ("Strava for groomers") with one real production
+user (the developer's wife, a professional groomer). Production = main branch,
+auto-deployed by Vercel to groom-pace.vercel.app. Production must never break.
+
+## Architecture (current)
+- Vanilla HTML/CSS/JS. No framework, no build step, no bundler. Keep it that way
+  unless explicitly told otherwise.
+- index.html currently contains everything (~3500 lines). Splitting into
+  index.html + app.js + style.css is approved. Introducing React/Vue/Vite is NOT
+  approved without explicit permission.
+- sw.js = service worker (network-first for index.html, cache-first otherwise).
+- manifest.json = PWA manifest.
+
+## Sacred invariants — breaking these loses real user data
+1. localStorage key 'groompace-v5' and SCHEMA_VERSION/MIGRATIONS logic must
+   keep loading existing data. Never rename keys without a copy-over migration.
+2. IndexedDB 'groompace-photos' stores photos as 'idb:...' refs. Never change
+   DB_NAME or the ref format without a migration.
+3. Every release MUST bump CACHE_NAME in sw.js, or returning users get stuck
+   on stale versions.
+4. Export/Import (backup/restore) must keep working in every change.
+
+## Code patterns to preserve
+- Event delegation: all interactivity uses data-action attributes dispatched
+  through the ACTIONS map and wireActions(). Never add inline onclick handlers
+  except event.stopPropagation() on lightbox images.
+- R() re-renders everything; form input values are snapshotted/restored across
+  renders (file inputs excluded — browsers forbid setting their value).
+- All user-provided strings go through esc() before rendering.
+- Single quiet helper style: short names (S, R, vib, esc) are intentional.
+
+## Design system
+- Colors/typography via CSS custom properties in :root (warm cream palette,
+  rose primary #D4849A/#B8667E, Fraunces serif headings, DM Sans body).
+  Dark mode via prefers-color-scheme. All new UI must use the existing
+  CSS variables, not hardcoded colors.
+- Mobile-first, max-width 430px, bottom tab navigation, safe-area insets.
+
+## Workflow rules (non-negotiable)
+- Work in small slices. After each completed slice: STOP, summarize what
+  changed and why, and ask the developer to test before continuing.
+- Suggest a git commit message after each working slice. Never auto-commit.
+- Explain reasoning as you go — the developer is a CS student learning from
+  this process. Brief "why" notes beat silent changes.
+- Never modify the MIGRATIONS, load(), save(), or photo IDB functions without
+  flagging it loudly first.
+- If a task is ambiguous, ask one clarifying question instead of guessing.
+
+## Out of scope until explicitly approved
+Backend, accounts, login, cloud sync, online leaderboards, frameworks,
+build tooling, TypeScript migration.
