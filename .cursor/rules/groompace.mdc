@@ -27,6 +27,9 @@ auto-deployed by Vercel to groom-pace.vercel.app. Production must never break.
 3. Every release MUST bump CACHE_NAME in sw.js, or returning users get stuck
    on stale versions.
 4. Export/Import (backup/restore) must keep working in every change.
+5. Every release bumps BOTH CACHE_NAME in sw.js AND the app version
+   constant in app.js, in the same commit, matching the git tag. A version
+   label that lies is worse than no version label.
 
 ## Code patterns to preserve
 - Event delegation: all interactivity uses data-action attributes dispatched

@@ -1,0 +1,1 @@
+Read .cursor/rules/groompace.mdc and PRODUCT.md before any work — they are binding project rules and product definition.
