@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.6.1';
+const APP_VERSION = '0.6.4';
 
 const SK = 'groompace-v5';
 
