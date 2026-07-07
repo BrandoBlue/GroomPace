@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.9.0';
+const APP_VERSION = '0.10.0';
 
 const SK = 'groompace-v5';
 
@@ -124,7 +124,8 @@ let S = {
     viewDog: null,
     onboarded: false,
     logFilter: 'today',
-    logWeekOffset: 0
+    logWeekOffset: 0,
+    theme: 'auto'
 };
 
 let TI = null;
@@ -378,6 +379,7 @@ function load() {
             if (S.timerTotalPausedDuration === undefined) S.timerTotalPausedDuration = 0;
             if (!S.logFilter) S.logFilter = 'today';
             if (S.logWeekOffset === undefined) S.logWeekOffset = 0;
+            if (!['auto','light','dark'].includes(S.theme)) S.theme = 'auto';
         }
     } catch(e) {
         console.error('Failed to load saved data:', e);
@@ -585,6 +587,21 @@ function renderBreedNoteCard(breed) {
         ${n.notes ? `<div style="font-size:13px;color:var(--tm);line-height:1.5">${esc(n.notes)}</div>` : ''}
     </div>`;
 }
+
+// ── Theme (Auto / Light / Dark) ──
+function applyTheme() {
+    const root = document.documentElement;
+    if (S.theme === 'light' || S.theme === 'dark') root.dataset.theme = S.theme;
+    else delete root.dataset.theme;
+    // Keep the browser/status-bar chrome in sync with the effective theme
+    const dark = S.theme === 'dark' ||
+        (S.theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', dark ? '#121212' : '#FBF7F2');
+}
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (S.theme === 'auto') applyTheme();
+});
 
 // ── UI Actions ──
 function vib() { if (navigator.vibrate) navigator.vibrate(40); }
@@ -1065,6 +1082,7 @@ const ACTIONS = {
     'del-std':           (el) => delStd(el.dataset.id),
     'set-sub':           (el) => { vib(); S.sub = el.dataset.sub; S.showBreedForm=false; S.editBreedKey=null; S.showStdForm=false; S.editStdId=null; R(); },
     'set-sub2':          (el) => { vib(); S.sub2 = el.dataset.sub2; S.viewDog = null; R(); },
+    'set-theme':         (el) => { vib(); S.theme = el.dataset.theme; applyTheme(); save(); R(); },
     'set-log-filter':    (el) => { vib(); S.logFilter = el.dataset.filter; if (el.dataset.filter !== 'week') S.logWeekOffset = 0; save(); R(); },
     'log-week-prev':     ()   => { vib(); S.logWeekOffset = (S.logWeekOffset || 0) - 1; save(); R(); },
     'log-week-next':     ()   => { vib(); if ((S.logWeekOffset || 0) < 0) { S.logWeekOffset = (S.logWeekOffset || 0) + 1; save(); R(); } },
@@ -2415,6 +2433,15 @@ function renderStats() {
     ${renderInsights()}`}
     
     <div class="c" style="padding:20px;margin-bottom:20px">
+        <div class="sec-lbl" style="color:var(--lv)">🎨 Appearance</div>
+        <div style="display:flex;gap:6px">
+            ${[{k:'auto', l:'📱 Auto'}, {k:'light', l:'☀️ Light'}, {k:'dark', l:'🌙 Dark'}].map(t =>
+                `<button class="pill ${S.theme === t.k ? 'on' : ''}" style="flex:1" data-action="set-theme" data-theme="${t.k}">${t.l}</button>`).join('')}
+        </div>
+        <p style="font-size:12px;color:var(--di);margin-top:10px;line-height:1.5">Auto follows your phone's setting.</p>
+    </div>
+
+    <div class="c" style="padding:20px;margin-bottom:20px">
         <div class="sec-lbl" style="color:var(--di)">💾 Backup & Restore</div>
         <p style="font-size:13px;color:var(--mu);line-height:1.5;margin-bottom:12px">Move your data between devices: Save on your phone, Restore here (or vice versa).</p>
         <div style="display:flex;gap:10px;margin-bottom:10px">
@@ -2691,6 +2718,7 @@ if ('serviceWorker' in navigator) {
 
 // ── Init ──
 load();
+applyTheme();
 _prevTab = S.tab;
 R();
 if (S.timerRunning && !S.timerPausedAt) tick();

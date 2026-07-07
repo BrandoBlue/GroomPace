@@ -15,8 +15,11 @@
     --sp-sm: 10px; --sp-md: 14px; --sp-lg: 20px; --sp-xl: 24px;
 }
 
+/* Dark theme applies via the phone setting (unless user forced light),
+   or via an explicit in-app choice (data-theme="dark" on <html>).
+   Keep both blocks' variables identical when editing. */
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
         --bg: #121212; --card: #1C1C1E; --ca: #2C2C2E; --bd: #3A3A3C; --bl: #2C2C2E;
         --ro: #E598AB; --rd: #D47A94; --rs: #4A2A33; --rg: rgba(229,152,171,.1);
         --sg: #7CB691; --ss: rgba(124,182,145,.15);
@@ -29,6 +32,19 @@
         --hl: rgba(255,255,255,.06);
         --nav-bg: rgba(28,28,30,.88);
     }
+}
+:root[data-theme="dark"] {
+    --bg: #121212; --card: #1C1C1E; --ca: #2C2C2E; --bd: #3A3A3C; --bl: #2C2C2E;
+    --ro: #E598AB; --rd: #D47A94; --rs: #4A2A33; --rg: rgba(229,152,171,.1);
+    --sg: #7CB691; --ss: rgba(124,182,145,.15);
+    --hn: #D4A85C; --hs: rgba(212,168,92,.15);
+    --lv: #9B8DC4; --ls: rgba(155,141,196,.15);
+    --co: #D98B7B; --cs: rgba(217,139,123,.15);
+    --tx: #F2F2F7; --tm: #AEAEB2; --mu: #8E8E93; --di: #636366; --wh: #FFF;
+    --sh: 0 1px 2px rgba(0,0,0,.3), 0 10px 24px -8px rgba(0,0,0,.5);
+    --su: 0 4px 8px rgba(0,0,0,.35), 0 18px 44px -10px rgba(0,0,0,.65);
+    --hl: rgba(255,255,255,.06);
+    --nav-bg: rgba(28,28,30,.88);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
