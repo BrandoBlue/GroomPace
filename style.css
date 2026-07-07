@@ -7,15 +7,19 @@
     --lv: #9B8DC4; --ls: rgba(155,141,196,.1);
     --co: #D98B7B; --cs: rgba(217,139,123,.1);
     --tx: #2E2627; --tm: #5E4D50; --mu: #8E7C7F; --di: #BCA8AB; --wh: #FFF;
-    --sh: 0 2px 16px rgba(46,38,39,.06);
-    --su: 0 6px 24px rgba(46,38,39,.1);
+    --sh: 0 1px 2px rgba(46,38,39,.05), 0 10px 24px -8px rgba(46,38,39,.14);
+    --su: 0 4px 8px rgba(46,38,39,.06), 0 18px 44px -10px rgba(46,38,39,.2);
+    --hl: rgba(255,255,255,.65);
     --r: 16px;
-    --nav-bg: rgba(251,247,242,.94);
+    --nav-bg: rgba(251,247,242,.88);
     --sp-sm: 10px; --sp-md: 14px; --sp-lg: 20px; --sp-xl: 24px;
 }
 
+/* Dark theme applies via the phone setting (unless user forced light),
+   or via an explicit in-app choice (data-theme="dark" on <html>).
+   Keep both blocks' variables identical when editing. */
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
         --bg: #121212; --card: #1C1C1E; --ca: #2C2C2E; --bd: #3A3A3C; --bl: #2C2C2E;
         --ro: #E598AB; --rd: #D47A94; --rs: #4A2A33; --rg: rgba(229,152,171,.1);
         --sg: #7CB691; --ss: rgba(124,182,145,.15);
@@ -23,16 +27,38 @@
         --lv: #9B8DC4; --ls: rgba(155,141,196,.15);
         --co: #D98B7B; --cs: rgba(217,139,123,.15);
         --tx: #F2F2F7; --tm: #AEAEB2; --mu: #8E8E93; --di: #636366; --wh: #FFF;
-        --sh: 0 2px 16px rgba(0,0,0,.4);
-        --su: 0 6px 24px rgba(0,0,0,.6);
-        --nav-bg: rgba(28,28,30,.94);
+        --sh: 0 1px 2px rgba(0,0,0,.3), 0 10px 24px -8px rgba(0,0,0,.5);
+        --su: 0 4px 8px rgba(0,0,0,.35), 0 18px 44px -10px rgba(0,0,0,.65);
+        --hl: rgba(255,255,255,.06);
+        --nav-bg: rgba(28,28,30,.88);
     }
+}
+:root[data-theme="dark"] {
+    --bg: #121212; --card: #1C1C1E; --ca: #2C2C2E; --bd: #3A3A3C; --bl: #2C2C2E;
+    --ro: #E598AB; --rd: #D47A94; --rs: #4A2A33; --rg: rgba(229,152,171,.1);
+    --sg: #7CB691; --ss: rgba(124,182,145,.15);
+    --hn: #D4A85C; --hs: rgba(212,168,92,.15);
+    --lv: #9B8DC4; --ls: rgba(155,141,196,.15);
+    --co: #D98B7B; --cs: rgba(217,139,123,.15);
+    --tx: #F2F2F7; --tm: #AEAEB2; --mu: #8E8E93; --di: #636366; --wh: #FFF;
+    --sh: 0 1px 2px rgba(0,0,0,.3), 0 10px 24px -8px rgba(0,0,0,.5);
+    --su: 0 4px 8px rgba(0,0,0,.35), 0 18px 44px -10px rgba(0,0,0,.65);
+    --hl: rgba(255,255,255,.06);
+    --nav-bg: rgba(28,28,30,.88);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html, body {
     background: var(--bg); color: var(--tx); font-family: 'DM Sans', -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased; min-height: 100dvh; overscroll-behavior: none;
+}
+/* Ambient color wash behind everything — soft "world" backdrop the tiles float over */
+body::before {
+    content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+        radial-gradient(620px 420px at 85% -5%, rgba(212,132,154,.12), transparent 65%),
+        radial-gradient(520px 400px at -12% 28%, rgba(123,175,142,.10), transparent 65%),
+        radial-gradient(560px 420px at 112% 72%, rgba(155,141,196,.09), transparent 65%);
 }
 button { font-family: inherit; cursor: pointer; border: none; background: none; outline: none; }
 input, textarea, select { -webkit-appearance: none; appearance: none; font-family: inherit; outline: none; }
@@ -48,15 +74,23 @@ h1, h2, h3 { font-family: 'Fraunces', serif; font-weight: 600; }
 .page-title { font-size: 26px; margin-bottom: 6px; }
 .page-sub { font-size: 14px; color: var(--mu); margin-bottom: var(--sp-xl); }
 
+/* Floating dock: detached rounded bar hovering above the bottom edge */
 .nav {
-    position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 430px;
+    position: fixed; bottom: calc(env(safe-area-inset-bottom, 8px) + 10px);
+    left: 50%; transform: translateX(-50%); width: calc(100% - 24px); max-width: 406px;
     background: var(--nav-bg); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-    border-top: 1px solid var(--bd); display: flex; z-index: 100;
-    padding-bottom: calc(env(safe-area-inset-bottom, 8px) + 4px);
+    border: 1px solid var(--bd); border-radius: 26px; display: flex; z-index: 100;
+    padding: 6px; box-shadow: var(--su), inset 0 1px 0 var(--hl);
 }
-.nav button { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 12px 4px 8px; color: var(--di); transition: color .2s; min-height: 44px; }
-.nav button.on { color: var(--rd); }
-.nav .ni { font-size: 22px; margin-bottom: 2px; }
+.nav button {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    padding: 10px 4px 8px; color: var(--di); border-radius: 20px;
+    transition: color .2s, background .2s, transform .2s cubic-bezier(.2,.8,.2,1); min-height: 44px;
+}
+.nav button.on { color: var(--rd); background: var(--rg); }
+.nav button:active { transform: scale(.94); }
+.nav .ni { font-size: 22px; margin-bottom: 2px; transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+.nav button.on .ni { transform: translateY(-1px) scale(1.12); }
 .nav .nl { font-size: 10px; letter-spacing: .3px; }
 .nav button.on .nl { font-weight: 600; }
 
@@ -65,7 +99,23 @@ h1, h2, h3 { font-family: 'Fraunces', serif; font-weight: 600; }
 @keyframes fi { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 .fi { animation: fi .35s ease-out forwards; }
 
-.c { background: var(--card); border-radius: var(--r); box-shadow: var(--sh); padding: var(--sp-lg); margin-bottom: var(--sp-md); }
+.c {
+    background: var(--card); border-radius: var(--r); padding: var(--sp-lg); margin-bottom: var(--sp-md);
+    border: 1px solid var(--bd);
+    box-shadow: var(--sh), inset 0 1px 0 var(--hl);
+    transition: transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s cubic-bezier(.2,.8,.2,1);
+}
+/* Tappable tiles lift toward you on hover (desktop); everything springs on press */
+@media (hover: hover) {
+    .c[data-action]:hover, button.c:hover, .c[style*="cursor:pointer"]:hover {
+        transform: translateY(-3px);
+        box-shadow: var(--su), inset 0 1px 0 var(--hl);
+    }
+    .btn-primary:hover, .btn-secondary:hover, .pill:hover, .diff-btn:hover,
+    .sub-tab:hover, .file-btn:hover, .week-nav button:hover, .btn-ghost:hover {
+        transform: translateY(-1px); filter: brightness(1.04);
+    }
+}
 .c-flush { padding: 0; overflow: hidden; }
 .inp {
     width: 100%; padding: 14px; background: var(--bg); border: 1px solid var(--bd);
@@ -118,6 +168,18 @@ textarea.inp { resize: vertical; min-height: 60px; }
 .week-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: var(--sp-md); }
 .week-nav-label { font-size: 14px; font-weight: 600; color: var(--tx); flex: 1; text-align: center; }
 .week-nav button { padding: 10px 14px; background: var(--ca); border-radius: 10px; color: var(--tm); font-weight: 600; min-height: 44px; min-width: 44px; border: 1px solid var(--bd); }
+
+.pb-banner {
+    background: linear-gradient(135deg, var(--ro), var(--rd)); color: var(--wh);
+    border-radius: 14px; padding: 14px 18px; font-size: 15px; font-weight: 600;
+    line-height: 1.4; margin: 16px auto 0; max-width: 340px;
+    box-shadow: 0 6px 20px rgba(212,132,154,.35);
+}
+.baseline-note {
+    background: var(--hs); color: var(--hn); border: 1px solid rgba(212,168,92,.3);
+    border-radius: 12px; padding: 10px 16px; font-size: 13px; font-weight: 600;
+    line-height: 1.4; margin: 14px auto 0; max-width: 340px;
+}
 
 .timer-num { font-family: 'Fraunces', serif; font-size: 64px; font-weight: 600; letter-spacing: -1px; line-height: 1; font-variant-numeric: tabular-nums; transition: color 0.3s; }
 .timer-num.run { color: var(--rd); }

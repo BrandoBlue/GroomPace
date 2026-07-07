@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.6.4';
+const APP_VERSION = '0.10.1';
 
 const SK = 'groompace-v5';
 
@@ -124,7 +124,8 @@ let S = {
     viewDog: null,
     onboarded: false,
     logFilter: 'today',
-    logWeekOffset: 0
+    logWeekOffset: 0,
+    theme: 'auto'
 };
 
 let TI = null;
@@ -378,6 +379,7 @@ function load() {
             if (S.timerTotalPausedDuration === undefined) S.timerTotalPausedDuration = 0;
             if (!S.logFilter) S.logFilter = 'today';
             if (S.logWeekOffset === undefined) S.logWeekOffset = 0;
+            if (!['auto','light','dark'].includes(S.theme)) S.theme = 'auto';
         }
     } catch(e) {
         console.error('Failed to load saved data:', e);
@@ -566,6 +568,40 @@ function getGhostTime(dogName, breed) {
     if (!logs.length) return null;
     return Math.min(...logs.map(l => l.min));
 }
+function breedNoteFor(breed) {
+    if (!breed) return null;
+    const n = S.breedNotes[breed.trim().toLowerCase()];
+    return (n && (n.blade || n.comb || n.targetMin || n.notes)) ? n : null;
+}
+function renderBreedNoteCard(breed) {
+    const n = breedNoteFor(breed);
+    if (!n) return '';
+    return `
+    <div class="c fi" style="padding:14px 16px;margin-bottom:14px;border:1px solid rgba(155,141,196,.3);text-align:left">
+        <div class="sec-lbl" style="color:var(--lv);margin-bottom:8px">📒 Your ${esc(breed.trim())} Notes</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap${n.notes ? ';margin-bottom:8px' : ''}">
+            ${n.blade ? `<span class="tag">Blade: ${esc(n.blade)}</span>` : ''}
+            ${n.comb ? `<span class="tag">Comb: ${esc(n.comb)}</span>` : ''}
+            ${n.targetMin ? `<span class="tag" style="background:var(--rg);color:var(--rd)">Target: ${n.targetMin}m</span>` : ''}
+        </div>
+        ${n.notes ? `<div style="font-size:13px;color:var(--tm);line-height:1.5">${esc(n.notes)}</div>` : ''}
+    </div>`;
+}
+
+// ── Theme (Auto / Light / Dark) ──
+function applyTheme() {
+    const root = document.documentElement;
+    if (S.theme === 'light' || S.theme === 'dark') root.dataset.theme = S.theme;
+    else delete root.dataset.theme;
+    // Keep the browser/status-bar chrome in sync with the effective theme
+    const dark = S.theme === 'dark' ||
+        (S.theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', dark ? '#121212' : '#FBF7F2');
+}
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (S.theme === 'auto') applyTheme();
+});
 
 // ── UI Actions ──
 function vib() { if (navigator.vibrate) navigator.vibrate(40); }
@@ -818,7 +854,8 @@ function stopTimer() {
         pw, bo, bs, sl, hf, ta, fi,
         sect,
         before: S.timerBeforePhoto || null,
-        splits: parsedSplits
+        splits: parsedSplits,
+        prevBest: S.timerGhost || null
     };
     
     S.timerStart = null; 
@@ -858,10 +895,12 @@ function saveReview() {
         diff: _rvDf, notes: notes.trim(), timed: true, before: rv.before, after: _rvAfter
     });
     
-    S.timerReview = null; S.timerBeforePhoto = null; S.timerDogName = ''; 
+    const isPB = !!(rv.prevBest && rv.min < rv.prevBest);
+    S.timerReview = null; S.timerBeforePhoto = null; S.timerDogName = '';
     S.timerBreed = ''; S.timerStyle = '';
-    _rvDf = 1; _rvAfter = null; 
+    _rvDf = 1; _rvAfter = null;
     save(); S.tab = 'log'; R();
+    showToast(isPB ? `New personal best saved — ${rv.min}m! 🎉` : 'Groom saved 🐾', 'info');
 }
 
 function discardReview() {
@@ -1001,6 +1040,11 @@ function R() {
     }
     
     updateDatalist();
+    // Keep the active sub-tab fully visible in horizontally scrollable tab bars
+    const activeSub = ct.querySelector('.sub-tab.on');
+    if (activeSub && activeSub.scrollIntoView) {
+        try { activeSub.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {}
+    }
     if (S.timerRunning && !S.timerPausedAt) tick();
     
     wireActions();
@@ -1043,6 +1087,7 @@ const ACTIONS = {
     'del-std':           (el) => delStd(el.dataset.id),
     'set-sub':           (el) => { vib(); S.sub = el.dataset.sub; S.showBreedForm=false; S.editBreedKey=null; S.showStdForm=false; S.editStdId=null; R(); },
     'set-sub2':          (el) => { vib(); S.sub2 = el.dataset.sub2; S.viewDog = null; R(); },
+    'set-theme':         (el) => { vib(); S.theme = el.dataset.theme; applyTheme(); save(); R(); },
     'set-log-filter':    (el) => { vib(); S.logFilter = el.dataset.filter; if (el.dataset.filter !== 'week') S.logWeekOffset = 0; save(); R(); },
     'log-week-prev':     ()   => { vib(); S.logWeekOffset = (S.logWeekOffset || 0) - 1; save(); R(); },
     'log-week-next':     ()   => { vib(); if ((S.logWeekOffset || 0) < 0) { S.logWeekOffset = (S.logWeekOffset || 0) + 1; save(); R(); } },
@@ -1108,6 +1153,7 @@ const ACTIONS = {
         if (Date.now() - _lastSwipeTime < 300) return; 
         vib(); _lightbox = null; R(); 
     },
+    'share-photos':      (el) => shareBeforeAfter(Number(el.dataset.id)),
     'save-review':       ()   => saveReview(),
     'discard-review':    ()   => discardReview(),
     'start-timer-setup': ()   => {
@@ -1164,6 +1210,15 @@ function wireActions() {
                     console.error(`Action "${action}" failed:`, err);
                     showToast('Something went wrong. Try again.', 'error');
                 }
+            }
+        });
+        // Live breed-note preview on timer setup. Updates only the #bnPrev
+        // container (no full R()) so typing never loses focus or caret.
+        document.addEventListener('input', (e) => {
+            if (e.target && e.target.id === 'tB') {
+                S.timerBreed = e.target.value;
+                const prev = document.getElementById('bnPrev');
+                if (prev) prev.innerHTML = renderBreedNoteCard(S.timerBreed);
             }
         });
     }
@@ -1321,6 +1376,10 @@ function renderTimer() {
                 <div style="font-size:15px;color:var(--tm);margin-top:8px;font-weight:500;">
                     ${rv.dogName ? esc(rv.dogName) + ' · ' : ''}${esc(rv.breed)}${rv.style ? ' · ' + esc(rv.style) : ''}
                 </div>
+                ${rv.prevBest && rv.min < rv.prevBest ? `
+                <div class="pb-banner fi">🎉 New Personal Best! ${rv.prevBest - rv.min}m faster than your previous ${rv.prevBest}m${rv.dogName ? ' with ' + esc(rv.dogName) : ''}</div>` : ''}
+                ${!rv.prevBest && rv.breed ? `
+                <div class="baseline-note fi">⭐ First timed ${esc(rv.breed)} — this sets your ghost pace to race next time</div>` : ''}
             </div>
 
             ${rv.splits.length ? `
@@ -1394,6 +1453,8 @@ function renderTimer() {
                 </div>
             </div>
             
+            <div id="bnPrev">${renderBreedNoteCard(S.timerBreed)}</div>
+
             <button data-action="start-timer-setup" style="width:100%;padding:20px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:16px;color:var(--wh);font-size:18px;font-weight:600;box-shadow:0 8px 24px rgba(212,132,154,.35)">▶ Start Timer</button>
         </div>`;
     }
@@ -1420,6 +1481,8 @@ function renderTimer() {
                 ${S.timerPausedAt ? '▶ Resume' : '⏸ Pause'}
             </button>
         </div>
+
+        ${renderBreedNoteCard(S.timerBreed)}
         
         ${S.timerGhost ? `
         <div class="c ghost-card">
@@ -1551,6 +1614,7 @@ function renderLog() {
                 <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid var(--bl)">
                     <span style="font-size:12px;color:var(--di)">${esc(l.date)}</span>
                     <div class="log-actions">
+                        ${(l.before && l.after) ? `<button class="btn-ghost" data-action="share-photos" data-id="${l.id}">📤 Share</button>` : ''}
                         ${cmp ? `<button class="btn-ghost" data-action="view-dog" data-name="${esc(l.dogName)}">History (${hist.length})</button>` : ''}
                         <button class="btn-ghost" data-action="edit-log" data-id="${l.id}">Edit</button>
                         <button class="btn-ghost btn-danger" data-action="del-log" data-id="${l.id}">Delete</button>
@@ -1824,9 +1888,9 @@ function renderTools() {
             ${[
                 {k:'blades', l:'🔧 Blades'},
                 {k:'breeds', l:'🐕 Breeds'},
-                {k:'standards', l:'⏱️ Standards'},
+                {k:'standards', l:'⏱️ Pace'},
                 {k:'goals', l:'🎯 Goals'}
-            ].map(t => `<button class="sub-tab ${sub === t.k ? 'on' : ''}" style="flex:1;padding:12px 14px;text-align:center;min-width:90px;" data-action="set-sub" data-sub="${esc(t.k)}">${t.l}</button>`).join('')}
+            ].map(t => `<button class="sub-tab ${sub === t.k ? 'on' : ''}" style="flex:1;padding:12px 6px;text-align:center;min-width:70px;" data-action="set-sub" data-sub="${esc(t.k)}">${t.l}</button>`).join('')}
         </div>
         ${sub === 'blades' ? renderBlades() : sub === 'breeds' ? renderBreeds() : sub === 'standards' ? renderStandards() : renderGoals()}
     </div>`;
@@ -2241,7 +2305,7 @@ function renderDogDetail(name) {
                     </div>
                     ${tags.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${tags.map(t => `<span class="tag tag-sect">${esc(t)}</span>`).join('')}</div>` : ''}
                     ${hasSectionData(l) ? renderSectionBreakdown(l) : ''}
-                    ${(l.before || l.after) ? `<div style="display:flex;gap:8px;margin-top:8px">${l.before ? `<button data-action="show-photo" data-logid="${l.id}" data-which="B" style="padding:0;background:none;border:none;cursor:pointer;">${photoThumb(l.before, 'photo-thumb')}</button>` : ''} ${l.after ? `<button data-action="show-photo" data-logid="${l.id}" data-which="A" style="padding:0;background:none;border:none;cursor:pointer;">${photoThumb(l.after, 'photo-thumb')}</button>` : ''}</div>` : ''}
+                    ${(l.before || l.after) ? `<div style="display:flex;gap:8px;margin-top:8px;align-items:center">${l.before ? `<button data-action="show-photo" data-logid="${l.id}" data-which="B" style="padding:0;background:none;border:none;cursor:pointer;">${photoThumb(l.before, 'photo-thumb')}</button>` : ''} ${l.after ? `<button data-action="show-photo" data-logid="${l.id}" data-which="A" style="padding:0;background:none;border:none;cursor:pointer;">${photoThumb(l.after, 'photo-thumb')}</button>` : ''} ${(l.before && l.after) ? `<button class="btn-ghost" data-action="share-photos" data-id="${l.id}">📤 Share</button>` : ''}</div>` : ''}
                     ${l.notes ? `<div style="font-size:12px;color:var(--di);margin-top:6px;font-style:italic">"${esc(l.notes)}"</div>` : ''}
                 </div>`;
             }).join('')}
@@ -2263,6 +2327,77 @@ function renderChecklist() {
             </div>`;
         }).join('')}
     </div>`;
+}
+
+function sectionAverages() {
+    const sums = {}, counts = {};
+    let logsWith = 0;
+    S.logs.forEach(l => {
+        if (!hasSectionData(l)) return;
+        logsWith++;
+        SECT_KEYS.forEach(({ k }) => {
+            const sec = (l.sect && l.sect[k]) || (l[k] ? l[k] * 60 : 0);
+            if (sec > 0) { sums[k] = (sums[k] || 0) + sec; counts[k] = (counts[k] || 0) + 1; }
+        });
+    });
+    if (logsWith < 3) return null;
+    const avgs = SECT_KEYS.map(({ k, n }) => counts[k] ? { k, n, avg: Math.round(sums[k] / counts[k]) } : null).filter(Boolean);
+    return avgs.length >= 2 ? avgs : null;
+}
+
+function breedTrends() {
+    const byBreed = {};
+    S.logs.forEach(l => {
+        const k = (l.breed || '').toLowerCase();
+        if (k) (byBreed[k] = byBreed[k] || []).push(l);
+    });
+    const out = [];
+    Object.values(byBreed).forEach(logs => {
+        if (logs.length < 4) return;
+        const sorted = logs.slice().sort((a, b) => a.ts - b.ts);
+        const half = Math.floor(sorted.length / 2);
+        const avg = arr => arr.reduce((a, l) => a + l.min, 0) / arr.length;
+        out.push({
+            breed: sorted[0].breed,
+            count: logs.length,
+            delta: Math.round(avg(sorted.slice(0, half)) - avg(sorted.slice(half)))
+        });
+    });
+    return out.sort((a, b) => b.delta - a.delta).slice(0, 3);
+}
+
+function renderInsights() {
+    const secAvgs = sectionAverages();
+    const trends = breedTrends();
+    let html = '';
+    if (secAvgs) {
+        const total = secAvgs.reduce((a, s) => a + s.avg, 0);
+        const top = secAvgs.slice().sort((a, b) => b.avg - a.avg)[0];
+        html += `
+    <div class="c" style="padding:20px;margin-bottom:16px">
+        <div class="sec-lbl" style="color:var(--lv)">💡 Where Your Time Goes</div>
+        <p style="font-size:13px;color:var(--tm);line-height:1.5;margin-bottom:12px"><strong>${top.n}</strong> is your biggest step — ${fmtDurSec(top.avg)} on average (${Math.round(top.avg / total * 100)}% of a typical groom). Trimming minutes there moves your times the most.</p>
+        ${secAvgs.map(s => `
+        <div class="section-row"><span>${s.n}</span><strong>${fmtDurSec(s.avg)}</strong></div>
+        <div class="section-bar-wrap"><div class="section-bar" style="width:${Math.round(s.avg / top.avg * 100)}%"></div></div>`).join('')}
+    </div>`;
+    }
+    if (trends.length) {
+        html += `
+    <div class="c" style="padding:20px;margin-bottom:16px">
+        <div class="sec-lbl" style="color:var(--sg)">📈 Breed Progress</div>
+        ${trends.map(t => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bl)">
+            <div>
+                <div style="font-size:14px;font-weight:600;text-transform:capitalize">${esc(t.breed)}</div>
+                <div style="font-size:11px;color:var(--di)">${t.count} grooms</div>
+            </div>
+            <span style="font-size:13px;font-weight:700;color:${t.delta > 0 ? 'var(--sg)' : t.delta < 0 ? 'var(--co)' : 'var(--mu)'}">${t.delta > 0 ? '▼ ' + t.delta + 'm faster' : t.delta < 0 ? '▲ ' + Math.abs(t.delta) + 'm slower' : '— steady'}</span>
+        </div>`).join('')}
+        <p style="font-size:11px;color:var(--di);margin-top:10px;line-height:1.5">Compares your early grooms to your recent ones, per breed (4+ grooms).</p>
+    </div>`;
+    }
+    return html;
 }
 
 function renderStats() {
@@ -2299,8 +2434,18 @@ function renderStats() {
                 <span>🔴 ${S.logs.filter(l => l.diff === 3).length}</span>
             </div>
         </div>
-    </div>`}
+    </div>
+    ${renderInsights()}`}
     
+    <div class="c" style="padding:20px;margin-bottom:20px">
+        <div class="sec-lbl" style="color:var(--lv)">🎨 Appearance</div>
+        <div style="display:flex;gap:6px">
+            ${[{k:'auto', l:'📱 Auto'}, {k:'light', l:'☀️ Light'}, {k:'dark', l:'🌙 Dark'}].map(t =>
+                `<button class="pill ${S.theme === t.k ? 'on' : ''}" style="flex:1" data-action="set-theme" data-theme="${t.k}">${t.l}</button>`).join('')}
+        </div>
+        <p style="font-size:12px;color:var(--di);margin-top:10px;line-height:1.5">Auto follows your phone's setting.</p>
+    </div>
+
     <div class="c" style="padding:20px;margin-bottom:20px">
         <div class="sec-lbl" style="color:var(--di)">💾 Backup & Restore</div>
         <p style="font-size:13px;color:var(--mu);line-height:1.5;margin-bottom:12px">Move your data between devices: Save on your phone, Restore here (or vice versa).</p>
@@ -2324,6 +2469,115 @@ function renderStats() {
         <div style="font-size:11px;color:var(--di);margin-bottom:8px">GroomPace v${APP_VERSION}</div>
         <button data-action="reset-all" style="font-size:13px;color:var(--di);text-decoration:underline;padding:10px">Reset All Data</button>
     </div>`;
+}
+
+// ── Before/After Share Image ──
+function loadImg(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Image failed to load'));
+        img.src = src;
+    });
+}
+
+// drawImage with cover-crop: fills the destination rect, cropping overflow
+function coverDraw(ctx, img, dx, dy, dw, dh) {
+    const ir = img.width / img.height, dr = dw / dh;
+    let sx = 0, sy = 0, sw = img.width, sh = img.height;
+    if (ir > dr) { sw = img.height * dr; sx = (img.width - sw) / 2; }
+    else { sh = img.width / dr; sy = (img.height - sh) / 2; }
+    ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+}
+
+function rrPath(ctx, x, y, w, h, r) {
+    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); return; }
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+}
+
+async function shareBeforeAfter(id) {
+    vib();
+    const l = S.logs.find(x => x.id === id);
+    if (!l || !l.before || !l.after) return;
+    try {
+        const [bSrc, aSrc] = await Promise.all([loadPhoto(l.before), loadPhoto(l.after)]);
+        if (!bSrc || !aSrc) { showToast('Could not load those photos.', 'error'); return; }
+        try { await document.fonts.ready; } catch (e) {}
+        const [bImg, aImg] = await Promise.all([loadImg(bSrc), loadImg(aSrc)]);
+
+        const W = 1080, H = 1350, PH = 1020; // 4:5 portrait; photos fill top 1020px
+        const c = document.createElement('canvas');
+        c.width = W; c.height = H;
+        const ctx = c.getContext('2d');
+
+        ctx.fillStyle = '#FBF7F2';
+        ctx.fillRect(0, 0, W, H);
+        coverDraw(ctx, bImg, 0, 0, W / 2 - 3, PH);
+        coverDraw(ctx, aImg, W / 2 + 3, 0, W / 2 - 3, PH);
+
+        const pill = (text, x) => {
+            ctx.font = '700 30px "DM Sans", sans-serif';
+            const w = ctx.measureText(text).width + 48;
+            ctx.fillStyle = 'rgba(46,38,39,0.65)';
+            rrPath(ctx, x, 28, w, 56, 28);
+            ctx.fill();
+            ctx.fillStyle = '#FFF';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, x + 24, 58);
+            ctx.textBaseline = 'alphabetic';
+        };
+        pill('BEFORE', 28);
+        pill('AFTER', W / 2 + 31);
+
+        const title = l.dogName ? `${l.dogName} · ${l.breed}` : l.breed;
+        ctx.fillStyle = '#2E2627';
+        ctx.font = '600 54px "Fraunces", Georgia, serif';
+        ctx.fillText(title, 48, PH + 96, W - 340);
+        ctx.fillStyle = '#8E7C7F';
+        ctx.font = '400 32px "DM Sans", sans-serif';
+        ctx.fillText(l.date || '', 48, PH + 150);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#B8667E';
+        ctx.font = '600 84px "Fraunces", Georgia, serif';
+        ctx.fillText(l.min + 'm', W - 48, PH + 118);
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#D4849A';
+        ctx.font = '600 30px "DM Sans", sans-serif';
+        ctx.fillText('🐾 Tracked with GroomPace', 48, H - 56);
+
+        const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9));
+        if (!blob) throw new Error('Canvas produced no image');
+        const fname = 'GroomPace_' + (l.dogName || l.breed || 'groom').replace(/[^a-z0-9]+/gi, '_') + '.jpg';
+        const file = new File([blob], fname, { type: 'image/jpeg' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({ files: [file], title: 'Before & After', text: `${title} — ${l.min} minute groom ✂️` });
+                return;
+            } catch (err) {
+                if (err && err.name === 'AbortError') return; // user closed the share sheet
+                console.warn('Native share failed, falling back to download:', err);
+            }
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fname;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast('Image downloaded — post that transformation! 🐾', 'info', 5000);
+    } catch (err) {
+        console.error('Share image failed:', err);
+        showToast('Could not create the share image.', 'error');
+    }
 }
 
 async function exportData() {
@@ -2469,6 +2723,7 @@ if ('serviceWorker' in navigator) {
 
 // ── Init ──
 load();
+applyTheme();
 _prevTab = S.tab;
 R();
 if (S.timerRunning && !S.timerPausedAt) tick();
