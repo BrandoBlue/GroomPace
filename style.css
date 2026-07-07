@@ -119,6 +119,18 @@ textarea.inp { resize: vertical; min-height: 60px; }
 .week-nav-label { font-size: 14px; font-weight: 600; color: var(--tx); flex: 1; text-align: center; }
 .week-nav button { padding: 10px 14px; background: var(--ca); border-radius: 10px; color: var(--tm); font-weight: 600; min-height: 44px; min-width: 44px; border: 1px solid var(--bd); }
 
+.pb-banner {
+    background: linear-gradient(135deg, var(--ro), var(--rd)); color: var(--wh);
+    border-radius: 14px; padding: 14px 18px; font-size: 15px; font-weight: 600;
+    line-height: 1.4; margin: 16px auto 0; max-width: 340px;
+    box-shadow: 0 6px 20px rgba(212,132,154,.35);
+}
+.baseline-note {
+    background: var(--hs); color: var(--hn); border: 1px solid rgba(212,168,92,.3);
+    border-radius: 12px; padding: 10px 16px; font-size: 13px; font-weight: 600;
+    line-height: 1.4; margin: 14px auto 0; max-width: 340px;
+}
+
 .timer-num { font-family: 'Fraunces', serif; font-size: 64px; font-weight: 600; letter-spacing: -1px; line-height: 1; font-variant-numeric: tabular-nums; transition: color 0.3s; }
 .timer-num.run { color: var(--rd); }
 .ghost-card { margin: 24px auto; max-width: 340px; padding: 18px; border: 1px solid var(--bd); background: var(--card); box-shadow: var(--sh); }
