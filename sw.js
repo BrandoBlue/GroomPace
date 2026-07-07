@@ -1,18 +1,23 @@
-const CACHE_NAME = 'groompace-v0.6.4';
+const CACHE_NAME = 'groompace-v0.7.0';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
+  './apple-touch-icon.png',
   'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..700&family=Fraunces:opsz,wght@9..144,400..700&display=swap'
 ];
 
 const CORE_ASSETS = ['./index.html', './style.css', './app.js'];
+const CORE_ASSET_PATHS = new Set(CORE_ASSETS.map(p => '/' + p.replace('./', '')));
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 function isCoreAsset(url) {
-  return CORE_ASSETS.some(p => url.includes(p.replace('./', '')));
+  try { return CORE_ASSET_PATHS.has(new URL(url).pathname); }
+  catch { return false; }
 }
 
 function isFontRequest(url) {
@@ -54,7 +59,11 @@ self.addEventListener('fetch', event => {
           }
           return response;
         })
-        .catch(() => caches.match(event.request).then(r => r || caches.match('./index.html')))
+        .catch(() => caches.match(event.request).then(r => {
+          if (r) return r;
+          if (event.request.mode === 'navigate') return caches.match('./index.html');
+          return Response.error();
+        }))
     );
     return;
   }
