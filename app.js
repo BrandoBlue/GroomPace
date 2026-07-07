@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.10.0';
+const APP_VERSION = '0.10.1';
 
 const SK = 'groompace-v5';
 
@@ -1040,6 +1040,11 @@ function R() {
     }
     
     updateDatalist();
+    // Keep the active sub-tab fully visible in horizontally scrollable tab bars
+    const activeSub = ct.querySelector('.sub-tab.on');
+    if (activeSub && activeSub.scrollIntoView) {
+        try { activeSub.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {}
+    }
     if (S.timerRunning && !S.timerPausedAt) tick();
     
     wireActions();
@@ -1883,9 +1888,9 @@ function renderTools() {
             ${[
                 {k:'blades', l:'🔧 Blades'},
                 {k:'breeds', l:'🐕 Breeds'},
-                {k:'standards', l:'⏱️ Standards'},
+                {k:'standards', l:'⏱️ Pace'},
                 {k:'goals', l:'🎯 Goals'}
-            ].map(t => `<button class="sub-tab ${sub === t.k ? 'on' : ''}" style="flex:1;padding:12px 14px;text-align:center;min-width:90px;" data-action="set-sub" data-sub="${esc(t.k)}">${t.l}</button>`).join('')}
+            ].map(t => `<button class="sub-tab ${sub === t.k ? 'on' : ''}" style="flex:1;padding:12px 6px;text-align:center;min-width:70px;" data-action="set-sub" data-sub="${esc(t.k)}">${t.l}</button>`).join('')}
         </div>
         ${sub === 'blades' ? renderBlades() : sub === 'breeds' ? renderBreeds() : sub === 'standards' ? renderStandards() : renderGoals()}
     </div>`;
