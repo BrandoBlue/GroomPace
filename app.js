@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.12.2';
+const APP_VERSION = '0.13.0';
 
 const SK = 'groompace-v5';
 
@@ -417,7 +417,7 @@ function load() {
 }
 
 function save() {
-    if (_resetting) return; 
+    if (_resetting) return;
     try {
         const payload = { ...S, schemaVersion: SCHEMA_VERSION };
         localStorage.setItem(SK, JSON.stringify(payload));
@@ -430,6 +430,131 @@ function save() {
             showToast('Could not save. Your recent changes may be lost if you close the app.', 'error', 6000);
         }
     }
+    // ⚠️ SACRED FUNCTION EDIT: mirror state to the device on native builds.
+    // Fire-and-forget, fully guarded, and no-op on web — it cannot affect the
+    // localStorage write above or the web app in any way. See nativeMirror().
+    try { nativeMirror(); } catch(e) {}
+}
+
+// ── Native durability (Capacitor only — every function no-ops on the web) ──
+// WKWebView / Android WebView can evict localStorage + IndexedDB under storage
+// pressure or "Offload App". For an app whose whole promise is "your data stays
+// on your phone", eviction would be catastrophic. On native we mirror the state
+// string to the app's Documents folder (iCloud-backed on iOS) on every save,
+// keep a weekly full backup that also carries the photos, and restore from
+// either if web storage ever comes up empty. The permanent fix is cloud backup
+// (Phase E1); this is the floor until then.
+const NATIVE_STATE_FILE = 'groompace-state.json';
+const NATIVE_BACKUP_FILE = 'groompace-full-backup.json';
+const NATIVE_BACKUP_TS_KEY = 'groompace-native-backup-ts';
+let _mirrorTimer = null;
+let _pendingRestoreToast = false;
+
+function isNative() {
+    return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+}
+function _fsPlugin() {
+    return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) || null;
+}
+
+// Debounced 2s mirror of the raw state string. Called from save().
+function nativeMirror() {
+    if (!isNative()) return;
+    const fs = _fsPlugin();
+    if (!fs) return;
+    clearTimeout(_mirrorTimer);
+    _mirrorTimer = setTimeout(() => {
+        const raw = localStorage.getItem(SK);
+        if (!raw) return;
+        fs.writeFile({ path: NATIVE_STATE_FILE, data: raw, directory: 'DOCUMENTS', encoding: 'utf8' }).catch(() => {});
+    }, 2000);
+}
+
+// Weekly full backup incl. inline photos (reuses the export resolve pipeline).
+async function nativeFullBackup() {
+    if (!isNative()) return;
+    const fs = _fsPlugin();
+    if (!fs) return;
+    try {
+        const last = Number(localStorage.getItem(NATIVE_BACKUP_TS_KEY) || 0);
+        if (Date.now() - last < 7 * 864e5) return;
+        const resolvedLogs = await Promise.all((S.logs || []).map(async l => ({
+            ...l,
+            before: l.before && l.before.startsWith?.('idb:') ? await loadPhoto(l.before) : l.before,
+            after:  l.after  && l.after.startsWith?.('idb:')  ? await loadPhoto(l.after)  : l.after
+        })));
+        const payload = { ...S, logs: resolvedLogs, schemaVersion: SCHEMA_VERSION };
+        delete payload.timerBeforePhoto;
+        await fs.writeFile({ path: NATIVE_BACKUP_FILE, data: JSON.stringify(payload), directory: 'DOCUMENTS', encoding: 'utf8' });
+        localStorage.setItem(NATIVE_BACKUP_TS_KEY, String(Date.now()));
+    } catch (e) { /* backup is best-effort */ }
+}
+
+// Restore from the device mirror if localStorage is empty. Runs on native BEFORE
+// load(), so the normal load() path then reads restored data as if nothing broke.
+// Returns true if it restored anything (used to defer a user-facing toast).
+async function nativeRestoreIfEmpty() {
+    if (!isNative()) return false;
+    const fs = _fsPlugin();
+    if (!fs) return false;
+    if (localStorage.getItem(SK)) return false; // web storage intact — nothing to do
+    // Prefer the lightweight state mirror (freshest — written every save).
+    try {
+        const res = await fs.readFile({ path: NATIVE_STATE_FILE, directory: 'DOCUMENTS', encoding: 'utf8' });
+        if (res && res.data) {
+            localStorage.setItem(SK, res.data);
+            _pendingRestoreToast = true;
+            // Photos live in IndexedDB (also evictable). If the state's idb: refs
+            // are now dangling, re-seed them from the full backup's inline photos.
+            await nativeReseedPhotosFromBackup();
+            return true;
+        }
+    } catch (e) { /* no mirror file — fall through to full backup */ }
+    // Fall back to the full backup (has inline photos).
+    try {
+        const res = await fs.readFile({ path: NATIVE_BACKUP_FILE, directory: 'DOCUMENTS', encoding: 'utf8' });
+        if (res && res.data) {
+            const clean = sanitizeImport(JSON.parse(res.data));
+            if (clean) {
+                for (const log of clean.logs) {
+                    if (log.before && log.before.startsWith?.('data:image/')) log.before = await savePhoto(log.before);
+                    if (log.after && log.after.startsWith?.('data:image/')) log.after = await savePhoto(log.after);
+                }
+                localStorage.setItem(SK, JSON.stringify({ ...clean, schemaVersion: SCHEMA_VERSION }));
+                _pendingRestoreToast = true;
+                return true;
+            }
+        }
+    } catch (e) { /* nothing to restore — genuine fresh install */ }
+    return false;
+}
+
+// After a state-mirror restore, recover any photos whose IndexedDB blobs were
+// evicted, using the full backup's inline copies. Best-effort and idempotent.
+async function nativeReseedPhotosFromBackup() {
+    const fs = _fsPlugin();
+    if (!fs) return;
+    try {
+        const res = await fs.readFile({ path: NATIVE_BACKUP_FILE, directory: 'DOCUMENTS', encoding: 'utf8' });
+        if (!res || !res.data) return;
+        const backup = JSON.parse(res.data);
+        const byId = {};
+        (backup.logs || []).forEach(l => { byId[l.id] = l; });
+        const state = JSON.parse(localStorage.getItem(SK));
+        let changed = false;
+        for (const log of (state.logs || [])) {
+            const src = byId[log.id];
+            if (!src) continue;
+            for (const k of ['before', 'after']) {
+                const ref = log[k];
+                if (ref && ref.startsWith?.('idb:') && !(await loadPhoto(ref)) && src[k] && src[k].startsWith?.('data:image/')) {
+                    log[k] = await savePhoto(src[k]);
+                    changed = true;
+                }
+            }
+        }
+        if (changed) localStorage.setItem(SK, JSON.stringify(state));
+    } catch (e) { /* best-effort */ }
 }
 
 // ── Utility Helpers ──
@@ -2766,30 +2891,47 @@ window.addEventListener('beforeunload', () => {
 });
 
 // ── PWA Service Worker Registration ──
-if ('serviceWorker' in navigator) {
+// Only on the web. Inside the Capacitor wrapper the assets are bundled locally
+// and iOS WKWebView doesn't support SW on the capacitor:// scheme — a SW there
+// is pure downside (could only serve stale copies), so we skip it.
+if ('serviceWorker' in navigator && !isNative()) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW registration failed:', err));
     });
 }
 
 // ── Init ──
-load();
-applyTheme();
-// Manifest shortcuts ("Start Timer" / "Log a Groom" on the app icon) deep-link
-// via ?tab=. Whitelisted, and only once the user is onboarded.
-const _qTab = new URLSearchParams(location.search).get('tab');
-if (_qTab && ['home','timer','log','tools','me'].includes(_qTab) && S.onboarded) S.tab = _qTab;
-_prevTab = S.tab;
-R();
-if (S.timerRunning && !S.timerPausedAt) tick();
-hydratePhotosForView();
-// "You got the update" nudge: compare against the last version this device saw.
-// (SW controllerchange is racy — on fast loads the new worker activates before
-// this script even evaluates — so a version stamp is the reliable signal.)
-try {
-    const _lastV = localStorage.getItem('groompace-last-version');
-    if (_lastV && _lastV !== APP_VERSION && S.onboarded) {
-        showToast(`GroomPace updated to v${APP_VERSION} ✂️`, 'info', 5000);
-    }
-    localStorage.setItem('groompace-last-version', APP_VERSION);
-} catch (e) {}
+function boot() {
+    load();
+    applyTheme();
+    // Manifest shortcuts ("Start Timer" / "Log a Groom" on the app icon) deep-link
+    // via ?tab=. Whitelisted, and only once the user is onboarded.
+    const _qTab = new URLSearchParams(location.search).get('tab');
+    if (_qTab && ['home','timer','log','tools','me'].includes(_qTab) && S.onboarded) S.tab = _qTab;
+    _prevTab = S.tab;
+    R();
+    if (S.timerRunning && !S.timerPausedAt) tick();
+    hydratePhotosForView();
+    // If native restore just rescued data from the device mirror, tell the user.
+    if (_pendingRestoreToast) { _pendingRestoreToast = false; showToast('Restored your grooms from device backup 🐾', 'info', 5000); }
+    // "You got the update" nudge: compare against the last version this device saw.
+    // (SW controllerchange is racy — on fast loads the new worker activates before
+    // this script even evaluates — so a version stamp is the reliable signal.)
+    try {
+        const _lastV = localStorage.getItem('groompace-last-version');
+        if (_lastV && _lastV !== APP_VERSION && S.onboarded) {
+            showToast(`GroomPace updated to v${APP_VERSION} ✂️`, 'info', 5000);
+        }
+        localStorage.setItem('groompace-last-version', APP_VERSION);
+    } catch (e) {}
+    // Kick off the weekly native photo backup (no-op on web / if run recently).
+    nativeFullBackup();
+}
+
+// Web boots synchronously (path unchanged). Native tries a device restore first,
+// then boots the same way — boot() always runs regardless of restore outcome.
+if (isNative()) {
+    nativeRestoreIfEmpty().catch(() => {}).finally(boot);
+} else {
+    boot();
+}
