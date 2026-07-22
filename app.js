@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.11.2';
+const APP_VERSION = '0.11.3';
 
 const SK = 'groompace-v5';
 
@@ -896,12 +896,13 @@ function cancelTimer() {
     S.timerPausedAt = null; S.timerTotalPausedDuration = 0;
     S.timerSplits = []; S.timerReview = null; 
     S.timerBeforePhoto = null; S.timerDogName = ''; 
-    S.timerBreed = ''; S.timerStyle = '';
+    S.timerBreed = ''; S.timerStyle = ''; _tStC = false;
     S.timerGhost = null;
     save(); R();
 }
 
 let _rvDf = 1, _rvAfter = null;
+let _tStC = false; // timer setup: Breed Specific (custom style) mode
 
 function saveReview() {
     vib();
@@ -922,7 +923,7 @@ function saveReview() {
     
     const isPB = !!(rv.prevBest && rv.min < rv.prevBest);
     S.timerReview = null; S.timerBeforePhoto = null; S.timerDogName = '';
-    S.timerBreed = ''; S.timerStyle = '';
+    S.timerBreed = ''; S.timerStyle = ''; _tStC = false;
     _rvDf = 1; _rvAfter = null;
     save(); S.tab = 'log'; R();
     showToast(isPB ? `New personal best saved — ${rv.min}m! 🎉` : 'Groom saved 🐾', 'info');
@@ -931,7 +932,7 @@ function saveReview() {
 function discardReview() {
     showConfirm("Discard this timed groom?", () => {
         S.timerReview = null; S.timerBeforePhoto = null; S.timerDogName = ''; 
-        S.timerBreed = ''; S.timerStyle = '';
+        S.timerBreed = ''; S.timerStyle = ''; _tStC = false;
         _rvDf = 1; _rvAfter = null; save(); R();
     });
 }
@@ -1121,6 +1122,14 @@ const ACTIONS = {
     'set-size-edit':     (el) => eSz(el.dataset.size),
     'set-style-form':    (el) => pSt(el.dataset.style),
     'set-style-edit':    (el) => eStl(el.dataset.style),
+    'set-style-timer':   (el) => {
+        vib();
+        const v = el.dataset.style;
+        const wasCustom = _tStC || (S.timerStyle && !CUT_STYLES.includes(S.timerStyle));
+        if (v === 'custom') { _tStC = !wasCustom; S.timerStyle = ''; }
+        else { _tStC = false; S.timerStyle = (S.timerStyle === v ? '' : v); }
+        save(); R();
+    },
     'set-diff-form':     (el) => pDf(Number(el.dataset.diff)),
     'set-diff-edit':     (el) => eDf(Number(el.dataset.diff)),
     'set-rv-diff':       (el) => rvDiff(Number(el.dataset.diff)),
@@ -1186,7 +1195,7 @@ const ACTIONS = {
     'start-timer-setup': ()   => {
         S.timerDogName = document.getElementById('tDN').value;
         S.timerBreed = document.getElementById('tB').value;
-        S.timerStyle = document.getElementById('tS').value;
+        // S.timerStyle is live-maintained by the pill grid / tSX input listener.
         startTimer();
     },
     'stop-timer':        ()   => stopTimer(),
@@ -1247,6 +1256,8 @@ function wireActions() {
                 const prev = document.getElementById('bnPrev');
                 if (prev) prev.innerHTML = renderBreedNoteCard(S.timerBreed);
             }
+            // Custom timer style types straight into state (no full R(), caret safe).
+            if (e.target && e.target.id === 'tSX') S.timerStyle = e.target.value;
         });
     }
     const cancelBtn = document.getElementById('modalCancel');
@@ -1457,22 +1468,24 @@ function renderTimer() {
 
     // Setup Screen
     if (!run && !S.timerStart) {
+        // Custom mode if flagged, or if a restored/legacy style isn't a preset.
+        const tSel = (_tStC || (S.timerStyle && !CUT_STYLES.includes(S.timerStyle))) ? 'custom' : S.timerStyle;
         return `
         <div style="padding-top:28px">
             <h2 style="font-size:26px;margin-bottom:6px">Live Timer</h2>
             <p style="font-size:14px;color:var(--mu);margin-bottom:28px">Set up, then start when the dog hits the table.</p>
-            
+
             <div class="c" style="padding:22px;margin-bottom:18px">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
                     <div><label class="lbl" for="tDN">Dog & Last Name</label><input class="inp" id="tDN" placeholder="e.g. Bella Smith" value="${esc(S.timerDogName)}" list="dogNameList"></div>
                     <div><label class="lbl" for="tB">Breed</label><input class="inp" id="tB" placeholder="e.g. Goldendoodle" value="${esc(S.timerBreed)}" list="breedList"></div>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-                    <div><label class="lbl" for="tS">Style</label><input class="inp" id="tS" placeholder="e.g. Teddy bear" value="${esc(S.timerStyle)}"></div>
-                    <div><label class="lbl">Size</label>
-                        <div style="display:flex;gap:6px">
-                            ${['small','medium','large'].map(s => `<button class="pill ${S.timerSize === s ? 'on' : ''}" style="flex:1;padding:14px 4px;" data-action="set-size" data-size="${s}">${s}</button>`).join('')}
-                        </div>
+                <div style="margin-bottom:16px"><label class="lbl">Style</label>
+                    ${styleGrid('set-style-timer', tSel, 'tSX', tSel === 'custom' ? S.timerStyle : '')}
+                </div>
+                <div style="margin-bottom:16px"><label class="lbl">Size</label>
+                    <div style="display:flex;gap:6px">
+                        ${['small','medium','large'].map(s => `<button class="pill ${S.timerSize === s ? 'on' : ''}" style="flex:1;padding:14px 4px;" data-action="set-size" data-size="${s}">${s}</button>`).join('')}
                     </div>
                 </div>
                 <div><label class="lbl">📸 Before Photo</label>
