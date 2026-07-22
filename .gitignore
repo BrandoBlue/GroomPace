@@ -1,0 +1,31 @@
+# Node / Capacitor tooling
+node_modules/
+
+# Generated Capacitor web bundle (produced by scripts/sync-www.mjs)
+www/
+
+# Android build outputs
+android/app/build/
+android/build/
+android/.gradle/
+android/captures/
+android/local.properties
+android/app/release/
+
+# iOS build outputs
+ios/App/Pods/
+ios/App/build/
+ios/App/output/
+ios/App/App/public/
+DerivedData/
+
+# Signing material — never commit
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+GoogleService-Info.plist
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db

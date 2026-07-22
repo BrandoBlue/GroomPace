@@ -1,0 +1,14 @@
+{
+  "appId": "com.groompace.app",
+  "appName": "GroomPace",
+  "webDir": "www",
+  "backgroundColor": "#FBF7F2",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 600,
+      "launchAutoHide": true,
+      "backgroundColor": "#FBF7F2",
+      "showSpinner": false
+    }
+  }
+}
