@@ -1,0 +1,87 @@
+name: iOS Simulator Build
+
+# Proof Milestone 2: build GroomPace for the iOS Simulator on a macOS runner
+# (no Apple Developer account, no code signing needed) and capture a screenshot
+# of it running on an iPhone — proof the iOS app works before spending the $99.
+# When you're ready to ship, this workflow is extended with signing + TestFlight
+# upload (see the commented block at the bottom).
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'app.js'
+      - 'index.html'
+      - 'style.css'
+      - 'manifest.json'
+      - 'fonts/**'
+      - 'ios/**'
+      - 'capacitor.config.json'
+      - 'package.json'
+      - 'scripts/**'
+      - '.github/workflows/ios-build.yml'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync web assets + CocoaPods
+        run: npm run sync:www && npx cap sync ios
+
+      - name: Build for iOS Simulator (unsigned)
+        run: |
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Boot a simulator, install, launch, screenshot
+        run: |
+          set -e
+          APP_PATH=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+          echo "Built app: $APP_PATH"
+          DEVICE=$(xcrun simctl create groompace-test com.apple.CoreSimulator.SimDeviceType.iPhone-16 || \
+                   xcrun simctl list devices available | grep -m1 -oE '[0-9A-F-]{36}')
+          xcrun simctl boot "$DEVICE" || true
+          sleep 15
+          xcrun simctl install "$DEVICE" "$APP_PATH"
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")
+          echo "Bundle id: $BUNDLE_ID"
+          xcrun simctl launch "$DEVICE" "$BUNDLE_ID"
+          sleep 8
+          xcrun simctl io "$DEVICE" screenshot groompace-ios.png
+
+      - name: Upload proof screenshot + app
+        uses: actions/upload-artifact@v4
+        with:
+          name: groompace-ios-proof
+          path: |
+            groompace-ios.png
+          if-no-files-found: error
+
+# ── Later: signed TestFlight upload (uncomment + add secrets when the Apple
+#    Developer account exists) ────────────────────────────────────────────────
+#   - Certificates/profile via secrets: CERT_B64, CERT_PASSWORD, PROFILE_B64
+#   - App Store Connect API key: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_B64
+#   Steps:
+#     - apple-actions/import-codesign-certs@v3 (imports the distribution cert)
+#     - xcodebuild archive -archivePath build/App.xcarchive ...
+#     - xcodebuild -exportArchive -exportOptionsPlist ExportOptions.plist ...
+#     - apple-actions/upload-testflight-build@v3 with the API key
