@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.10.1';
+const APP_VERSION = '0.10.2';
 
 const SK = 'groompace-v5';
 
@@ -557,6 +557,10 @@ function quote() {
 }
 function getDogNames() {
     return [...new Set(S.logs.map(l => (l.dogName || '')).filter(Boolean))].sort();
+}
+// One-line groom label: joins whatever identity parts exist, never renders blank.
+function groomLabel(...parts) {
+    return parts.filter(Boolean).map(esc).join(' · ') || 'Groom';
 }
 function getDogHistory(name) {
     return S.logs.filter(l => (l.dogName || '').toLowerCase() === name.toLowerCase()).sort((a,b) => b.ts - a.ts);
@@ -1348,7 +1352,7 @@ function renderHome() {
             ${recent.map(l => `
             <div class="c" style="padding:14px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
                 <div>
-                    <span style="font-size:15px;font-weight:600">${l.dogName ? esc(l.dogName) + ' · ' : ''}${esc(l.breed)}</span>
+                    <span style="font-size:15px;font-weight:600">${groomLabel(l.dogName, l.breed || l.style)}</span>
                     <span style="margin-left:4px">${l.diff === 3 ? '🔴' : l.diff === 2 ? '🟡' : ''}</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:6px">
@@ -1374,7 +1378,7 @@ function renderTimer() {
                 <div style="font-size:11px;letter-spacing:2px;color:var(--sg);text-transform:uppercase;font-weight:600;margin-bottom:8px">✅ Groom Complete!</div>
                 <div class="timer-num" style="color:var(--sg)">${fmtT(rv.totalMs || rv.min * 60000)}</div>
                 <div style="font-size:15px;color:var(--tm);margin-top:8px;font-weight:500;">
-                    ${rv.dogName ? esc(rv.dogName) + ' · ' : ''}${esc(rv.breed)}${rv.style ? ' · ' + esc(rv.style) : ''}
+                    ${groomLabel(rv.dogName, rv.breed, rv.style)}
                 </div>
                 ${rv.prevBest && rv.min < rv.prevBest ? `
                 <div class="pb-banner fi">🎉 New Personal Best! ${rv.prevBest - rv.min}m faster than your previous ${rv.prevBest}m${rv.dogName ? ' with ' + esc(rv.dogName) : ''}</div>` : ''}
@@ -1471,7 +1475,7 @@ function renderTimer() {
     return `
     <div style="padding-top:40px;text-align:center">
         <div style="font-size:14px;color:var(--mu);margin-bottom:8px;font-weight:500;">
-            ${S.timerDogName ? esc(S.timerDogName) + ' · ' : ''}${esc(S.timerBreed)}${S.timerStyle ? ' · ' + esc(S.timerStyle) : ''}
+            ${groomLabel(S.timerDogName, S.timerBreed, S.timerStyle)}
         </div>
         
         <div class="timer-num run" id="tn" style="${S.timerPausedAt ? 'color:var(--mu);' : ''}">${fmtT(elapsed())}</div>
@@ -1585,8 +1589,9 @@ function renderLog() {
             <div class="c">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:8px">
                     <div>
-                        ${l.dogName ? `<span style="font-size:16px;font-weight:600">${esc(l.dogName)}</span><span style="font-size:13px;color:var(--mu);margin-left:6px">${esc(l.breed)}</span>` : `<span style="font-size:16px;font-weight:600">${esc(l.breed)}</span>`}
-                        ${l.style ? `<span style="font-size:13px;color:var(--mu);margin-left:6px">${esc(l.style)}</span>` : ''}
+                        ${l.dogName ? `<span style="font-size:16px;font-weight:600">${esc(l.dogName)}</span>${l.breed ? `<span style="font-size:13px;color:var(--mu);margin-left:6px">${esc(l.breed)}</span>` : ''}` : `<span style="font-size:16px;font-weight:600">${esc(l.breed || l.style) || 'Groom'}</span>`}
+                        ${l.style && (l.dogName || l.breed) ? `<span style="font-size:13px;color:var(--mu);margin-left:6px">${esc(l.style)}</span>` : ''}
+                        ${!l.breed ? `<button class="btn-ghost" data-action="edit-log" data-id="${l.id}" style="font-size:12px;padding:2px 8px;margin-left:6px;color:var(--ro)">+ Add breed</button>` : ''}
                     </div>
                     <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
                         ${l.diff === 3 ? '🔴' : l.diff === 2 ? '🟡' : ''}
@@ -2204,7 +2209,7 @@ function renderDogs() {
         <button data-action="view-dog-me" data-name="${esc(d.name)}" style="width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid var(--bl);text-align:left">
             <div>
                 <div style="font-size:15px;font-weight:600;color:var(--tx)">${esc(d.name)}</div>
-                <div style="font-size:12px;color:var(--mu)">${esc(d.breed)} · ${d.count} visits</div>
+                <div style="font-size:12px;color:var(--mu)">${d.breed ? esc(d.breed) + ' · ' : ''}${d.count} visits</div>
             </div>
             <div style="text-align:right">
                 <div style="font-family:Fraunces,serif;font-size:16px;font-weight:600;color:${tc(d.best)}">Best: ${d.best}m</div>
@@ -2216,7 +2221,7 @@ function renderDogs() {
         <div style="font-size:12px;color:var(--mu);margin-bottom:12px;margin-top:${rpt.length ? '20px' : '0'};font-weight:600">ONE-TIME CLIENTS (${one.length})</div>
         ${one.map(d => `
         <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bl)">
-            <span style="font-size:14px;font-weight:500">${esc(d.name)} <span style="color:var(--mu);font-size:12px">${esc(d.breed)}</span></span>
+            <span style="font-size:14px;font-weight:500">${esc(d.name)}${d.breed ? ` <span style="color:var(--mu);font-size:12px">${esc(d.breed)}</span>` : ''}</span>
             <span style="font-size:13px;color:var(--mu)">${d.best}m</span>
         </div>`).join('')}` : ''}
     </div>`;
@@ -2252,7 +2257,7 @@ function renderDogDetail(name) {
             <div style="text-align:center;margin-bottom:16px">
                 <div style="font-size:24px;margin-bottom:6px">🐕</div>
                 <h2 style="font-size:22px">${esc(name)}</h2>
-                <div style="font-size:13px;color:var(--mu);margin-top:4px">${esc(hist[0].breed)} · ${hist.length} visits</div>
+                <div style="font-size:13px;color:var(--mu);margin-top:4px">${hist[0].breed ? esc(hist[0].breed) + ' · ' : ''}${hist.length} visits</div>
             </div>
             
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
@@ -2535,7 +2540,7 @@ async function shareBeforeAfter(id) {
         pill('BEFORE', 28);
         pill('AFTER', W / 2 + 31);
 
-        const title = l.dogName ? `${l.dogName} · ${l.breed}` : l.breed;
+        const title = [l.dogName, l.breed].filter(Boolean).join(' · ') || l.style || 'Fresh groom';
         ctx.fillStyle = '#2E2627';
         ctx.font = '600 54px "Fraunces", Georgia, serif';
         ctx.fillText(title, 48, PH + 96, W - 340);
