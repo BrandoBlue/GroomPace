@@ -1,5 +1,5 @@
 // GroomPace service worker
-const CACHE_NAME = 'groompace-v0.13.2';
+const CACHE_NAME = 'groompace-v0.14.0';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

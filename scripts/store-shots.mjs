@@ -126,5 +126,15 @@ await page.evaluate(() => {
 });
 await shot('7-timer-setup');
 
+// Extra verification screens (not for the store, just to eyeball the icon sweep)
+await page.evaluate(() => { S.tab = 'me'; S.sub2 = 'stats'; R(); });
+await shot('v-me-stats');
+await page.evaluate(() => { S.tab = 'me'; S.sub2 = 'dogs'; R(); });
+await shot('v-me-dogs');
+await page.evaluate(() => { S.tab = 'me'; S.sub2 = 'checklist'; R(); });
+await shot('v-me-prep');
+await page.evaluate(() => { S.tab = 'tools'; S.sub = 'breeds'; R(); });
+await shot('v-tools');
+
 await browser.close();
 console.log('DONE ->', OUT);
