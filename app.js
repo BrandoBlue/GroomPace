@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.10.1';
+const APP_VERSION = '0.11.3';
 
 const SK = 'groompace-v5';
 
@@ -80,6 +80,27 @@ const COMMON_BREEDS = [
     'Mixed Breed', 'Mutt', 'Other'
 ];
 
+// Preset cut styles — tappable pills on every groom form. Stored in the same
+// free-text `style` field as before, so legacy typed styles keep working.
+// 'Breed Specific…' reveals a free-text input for pattern/custom work.
+const CUT_STYLES = [
+    'Bath & Brush', 'Bath & Tidy', 'Full Groom', 'Puppy Cut', 'Teddy Bear',
+    'Summer Cut', 'Kennel Cut', 'Full Face & Feet (FFF)', 'Lamb Cut', 'Lion Cut',
+    'Full Shave Down', 'De-Matting', 'Sanitary Trim', 'Hand Strip', 'Asian Fusion'
+];
+
+// Shared pill-grid for the cut-style selector (log / edit / timer forms).
+// `sel` = current value ('' none, 'custom' = Breed Specific, or a preset).
+function styleGrid(action, sel, customId, customVal) {
+    const isCustom = sel === 'custom';
+    return `
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${CUT_STYLES.map(s => `<button class="pill ${sel === s ? 'on' : ''}" style="padding:8px 12px;font-size:12px" data-action="${action}" data-style="${esc(s)}">${esc(s)}</button>`).join('')}
+        <button class="pill ${isCustom ? 'on' : ''}" style="padding:8px 12px;font-size:12px" data-action="${action}" data-style="custom">✏️ Breed Specific…</button>
+    </div>
+    ${isCustom ? `<input class="inp" id="${customId}" placeholder="e.g. Westie pattern" value="${esc(customVal || '')}" style="margin-top:8px">` : ''}`;
+}
+
 const ACH = [
     {id:'first', e:'🐾', t:'First Groom', d:'Log your first groom', ck: s => s.logs.length >= 1},
     {id:'five', e:'✋', t:'High Five', d:'Log 5 grooms', ck: s => s.logs.length >= 5},
@@ -90,8 +111,8 @@ const ACH = [
     {id:'s30', e:'⚡', t:'Speed Demon', d:'Under 30 min groom', ck: s => s.logs.some(l => l.min <= 30)},
     {id:'s20', e:'🔥', t:'Blazing Fast', d:'Under 20 min groom', ck: s => s.logs.some(l => l.min <= 20)},
     {id:'t5', e:'⏱️', t:'Timer Pro', d:'Use live timer 5 times', ck: s => s.logs.filter(l => l.timed).length >= 5},
-    {id:'b5', e:'🐕', t:'Breed Master', d:'Groom 5 different breeds', ck: s => new Set(s.logs.map(l => l.breed.toLowerCase())).size >= 5},
-    {id:'b10', e:'🌟', t:'Breed Expert', d:'Groom 10 different breeds', ck: s => new Set(s.logs.map(l => l.breed.toLowerCase())).size >= 10},
+    {id:'b5', e:'🐕', t:'Breed Master', d:'Groom 5 different breeds', ck: s => new Set(s.logs.map(l => (l.breed || '').toLowerCase()).filter(Boolean)).size >= 5},
+    {id:'b10', e:'🌟', t:'Breed Expert', d:'Groom 10 different breeds', ck: s => new Set(s.logs.map(l => (l.breed || '').toLowerCase()).filter(Boolean)).size >= 10},
     {id:'ph', e:'📸', t:'Shutterbug', d:'Photos on 5 grooms', ck: s => s.logs.filter(l => (l.before || l.after)).length >= 5},
     {id:'str', e:'📈', t:'Trending Up', d:'3 consecutive faster grooms', ck: s => { if(s.logs.length < 3) return false; return s.logs[0].min < s.logs[1].min && s.logs[1].min < s.logs[2].min; }},
     {id:'notes', e:'📒', t:'Note Taker', d:'Notes for 3 breeds', ck: s => Object.keys(s.breedNotes || {}).length >= 3},
@@ -533,7 +554,8 @@ function trend() {
 function pbs() {
     const m = {};
     S.logs.forEach(l => {
-        const k = l.breed.toLowerCase();
+        const k = (l.breed || '').toLowerCase();
+        if (!k) return; // breed-less grooms can't have a per-breed best
         if (!m[k] || l.min < m[k].min) m[k] = l;
     });
     return Object.values(m).sort((a,b) => a.min - b.min).slice(0, 8);
@@ -557,6 +579,10 @@ function quote() {
 }
 function getDogNames() {
     return [...new Set(S.logs.map(l => (l.dogName || '')).filter(Boolean))].sort();
+}
+// One-line groom label: joins whatever identity parts exist, never renders blank.
+function groomLabel(...parts) {
+    return parts.filter(Boolean).map(esc).join(' · ') || 'Groom';
 }
 function getDogHistory(name) {
     return S.logs.filter(l => (l.dogName || '').toLowerCase() === name.toLowerCase()).sort((a,b) => b.ts - a.ts);
@@ -870,12 +896,13 @@ function cancelTimer() {
     S.timerPausedAt = null; S.timerTotalPausedDuration = 0;
     S.timerSplits = []; S.timerReview = null; 
     S.timerBeforePhoto = null; S.timerDogName = ''; 
-    S.timerBreed = ''; S.timerStyle = '';
+    S.timerBreed = ''; S.timerStyle = ''; _tStC = false;
     S.timerGhost = null;
     save(); R();
 }
 
 let _rvDf = 1, _rvAfter = null;
+let _tStC = false; // timer setup: Breed Specific (custom style) mode
 
 function saveReview() {
     vib();
@@ -883,7 +910,6 @@ function saveReview() {
     if (!rv) return;
     if (rv.min < 1) { showAlert('Groom must be at least 1 minute to save.'); return; }
     const breed = (rv.breed || '').trim();
-    if (!breed) { showAlert('Please enter a breed on the timer setup screen before saving.'); return; }
     const notes = (document.getElementById('rvNotes') || {}).value || '';
     
     S.logs.unshift({
@@ -897,7 +923,7 @@ function saveReview() {
     
     const isPB = !!(rv.prevBest && rv.min < rv.prevBest);
     S.timerReview = null; S.timerBeforePhoto = null; S.timerDogName = '';
-    S.timerBreed = ''; S.timerStyle = '';
+    S.timerBreed = ''; S.timerStyle = ''; _tStC = false;
     _rvDf = 1; _rvAfter = null;
     save(); S.tab = 'log'; R();
     showToast(isPB ? `New personal best saved — ${rv.min}m! 🎉` : 'Groom saved 🐾', 'info');
@@ -906,7 +932,7 @@ function saveReview() {
 function discardReview() {
     showConfirm("Discard this timed groom?", () => {
         S.timerReview = null; S.timerBeforePhoto = null; S.timerDogName = ''; 
-        S.timerBreed = ''; S.timerStyle = '';
+        S.timerBreed = ''; S.timerStyle = ''; _tStC = false;
         _rvDf = 1; _rvAfter = null; save(); R();
     });
 }
@@ -1094,12 +1120,22 @@ const ACTIONS = {
     'set-size':          (el) => { vib(); S.timerSize = el.dataset.size; save(); R(); },
     'set-size-form':     (el) => pSz(el.dataset.size),
     'set-size-edit':     (el) => eSz(el.dataset.size),
+    'set-style-form':    (el) => pSt(el.dataset.style),
+    'set-style-edit':    (el) => eStl(el.dataset.style),
+    'set-style-timer':   (el) => {
+        vib();
+        const v = el.dataset.style;
+        const wasCustom = _tStC || (S.timerStyle && !CUT_STYLES.includes(S.timerStyle));
+        if (v === 'custom') { _tStC = !wasCustom; S.timerStyle = ''; }
+        else { _tStC = false; S.timerStyle = (S.timerStyle === v ? '' : v); }
+        save(); R();
+    },
     'set-diff-form':     (el) => pDf(Number(el.dataset.diff)),
     'set-diff-edit':     (el) => eDf(Number(el.dataset.diff)),
     'set-rv-diff':       (el) => rvDiff(Number(el.dataset.diff)),
     'toggle-chk':        (el) => { vib(); const k = el.dataset.key; S.chk[k] = !S.chk[k]; save(); R(); },
     'show-form':         ()   => { vib(); S.showForm = true; R(); },
-    'cancel-form':       ()   => { vib(); S.showForm = false; _phB = null; _phA = null; R(); },
+    'cancel-form':       ()   => { vib(); S.showForm = false; _phB = null; _phA = null; _st = ''; R(); },
     'cancel-edit':       ()   => { vib(); S.editId = null; R(); },
     'show-breed-form':   ()   => { vib(); S.showBreedForm = true; R(); },
     'cancel-breed-form': ()   => { vib(); S.showBreedForm = false; S.editBreedKey = null; R(); },
@@ -1159,7 +1195,7 @@ const ACTIONS = {
     'start-timer-setup': ()   => {
         S.timerDogName = document.getElementById('tDN').value;
         S.timerBreed = document.getElementById('tB').value;
-        S.timerStyle = document.getElementById('tS').value;
+        // S.timerStyle is live-maintained by the pill grid / tSX input listener.
         startTimer();
     },
     'stop-timer':        ()   => stopTimer(),
@@ -1220,6 +1256,8 @@ function wireActions() {
                 const prev = document.getElementById('bnPrev');
                 if (prev) prev.innerHTML = renderBreedNoteCard(S.timerBreed);
             }
+            // Custom timer style types straight into state (no full R(), caret safe).
+            if (e.target && e.target.id === 'tSX') S.timerStyle = e.target.value;
         });
     }
     const cancelBtn = document.getElementById('modalCancel');
@@ -1348,7 +1386,7 @@ function renderHome() {
             ${recent.map(l => `
             <div class="c" style="padding:14px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
                 <div>
-                    <span style="font-size:15px;font-weight:600">${l.dogName ? esc(l.dogName) + ' · ' : ''}${esc(l.breed)}</span>
+                    <span style="font-size:15px;font-weight:600">${groomLabel(l.dogName, l.breed || l.style)}</span>
                     <span style="margin-left:4px">${l.diff === 3 ? '🔴' : l.diff === 2 ? '🟡' : ''}</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:6px">
@@ -1374,7 +1412,7 @@ function renderTimer() {
                 <div style="font-size:11px;letter-spacing:2px;color:var(--sg);text-transform:uppercase;font-weight:600;margin-bottom:8px">✅ Groom Complete!</div>
                 <div class="timer-num" style="color:var(--sg)">${fmtT(rv.totalMs || rv.min * 60000)}</div>
                 <div style="font-size:15px;color:var(--tm);margin-top:8px;font-weight:500;">
-                    ${rv.dogName ? esc(rv.dogName) + ' · ' : ''}${esc(rv.breed)}${rv.style ? ' · ' + esc(rv.style) : ''}
+                    ${groomLabel(rv.dogName, rv.breed, rv.style)}
                 </div>
                 ${rv.prevBest && rv.min < rv.prevBest ? `
                 <div class="pb-banner fi">🎉 New Personal Best! ${rv.prevBest - rv.min}m faster than your previous ${rv.prevBest}m${rv.dogName ? ' with ' + esc(rv.dogName) : ''}</div>` : ''}
@@ -1430,22 +1468,24 @@ function renderTimer() {
 
     // Setup Screen
     if (!run && !S.timerStart) {
+        // Custom mode if flagged, or if a restored/legacy style isn't a preset.
+        const tSel = (_tStC || (S.timerStyle && !CUT_STYLES.includes(S.timerStyle))) ? 'custom' : S.timerStyle;
         return `
         <div style="padding-top:28px">
             <h2 style="font-size:26px;margin-bottom:6px">Live Timer</h2>
             <p style="font-size:14px;color:var(--mu);margin-bottom:28px">Set up, then start when the dog hits the table.</p>
-            
+
             <div class="c" style="padding:22px;margin-bottom:18px">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
                     <div><label class="lbl" for="tDN">Dog & Last Name</label><input class="inp" id="tDN" placeholder="e.g. Bella Smith" value="${esc(S.timerDogName)}" list="dogNameList"></div>
                     <div><label class="lbl" for="tB">Breed</label><input class="inp" id="tB" placeholder="e.g. Goldendoodle" value="${esc(S.timerBreed)}" list="breedList"></div>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-                    <div><label class="lbl" for="tS">Style</label><input class="inp" id="tS" placeholder="e.g. Teddy bear" value="${esc(S.timerStyle)}"></div>
-                    <div><label class="lbl">Size</label>
-                        <div style="display:flex;gap:6px">
-                            ${['small','medium','large'].map(s => `<button class="pill ${S.timerSize === s ? 'on' : ''}" style="flex:1;padding:14px 4px;" data-action="set-size" data-size="${s}">${s}</button>`).join('')}
-                        </div>
+                <div style="margin-bottom:16px"><label class="lbl">Style</label>
+                    ${styleGrid('set-style-timer', tSel, 'tSX', tSel === 'custom' ? S.timerStyle : '')}
+                </div>
+                <div style="margin-bottom:16px"><label class="lbl">Size</label>
+                    <div style="display:flex;gap:6px">
+                        ${['small','medium','large'].map(s => `<button class="pill ${S.timerSize === s ? 'on' : ''}" style="flex:1;padding:14px 4px;" data-action="set-size" data-size="${s}">${s}</button>`).join('')}
                     </div>
                 </div>
                 <div><label class="lbl">📸 Before Photo</label>
@@ -1471,7 +1511,7 @@ function renderTimer() {
     return `
     <div style="padding-top:40px;text-align:center">
         <div style="font-size:14px;color:var(--mu);margin-bottom:8px;font-weight:500;">
-            ${S.timerDogName ? esc(S.timerDogName) + ' · ' : ''}${esc(S.timerBreed)}${S.timerStyle ? ' · ' + esc(S.timerStyle) : ''}
+            ${groomLabel(S.timerDogName, S.timerBreed, S.timerStyle)}
         </div>
         
         <div class="timer-num run" id="tn" style="${S.timerPausedAt ? 'color:var(--mu);' : ''}">${fmtT(elapsed())}</div>
@@ -1585,8 +1625,9 @@ function renderLog() {
             <div class="c">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:8px">
                     <div>
-                        ${l.dogName ? `<span style="font-size:16px;font-weight:600">${esc(l.dogName)}</span><span style="font-size:13px;color:var(--mu);margin-left:6px">${esc(l.breed)}</span>` : `<span style="font-size:16px;font-weight:600">${esc(l.breed)}</span>`}
-                        ${l.style ? `<span style="font-size:13px;color:var(--mu);margin-left:6px">${esc(l.style)}</span>` : ''}
+                        ${l.dogName ? `<span style="font-size:16px;font-weight:600">${esc(l.dogName)}</span>${l.breed ? `<span style="font-size:13px;color:var(--mu);margin-left:6px">${esc(l.breed)}</span>` : ''}` : `<span style="font-size:16px;font-weight:600">${esc(l.breed || l.style) || 'Groom'}</span>`}
+                        ${l.style && (l.dogName || l.breed) ? `<span style="font-size:13px;color:var(--mu);margin-left:6px">${esc(l.style)}</span>` : ''}
+                        ${!l.breed ? `<button class="btn-ghost" data-action="edit-log" data-id="${l.id}" style="font-size:12px;padding:2px 8px;margin-left:6px;color:var(--ro)">+ Add breed</button>` : ''}
                     </div>
                     <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
                         ${l.diff === 3 ? '🔴' : l.diff === 2 ? '🟡' : ''}
@@ -1646,7 +1687,7 @@ function renderChart(logs) {
 }
 
 // Manual Log Form
-let _sz = 'medium', _df = 1, _phB = null, _phA = null;
+let _sz = 'medium', _df = 1, _phB = null, _phA = null, _st = '';
 
 function renderLogForm() {
     return `
@@ -1662,15 +1703,16 @@ function renderLogForm() {
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
             <div><label class="lbl" for="fDN">Dog & Last Name</label><input class="inp" id="fDN" placeholder="e.g. Bella Smith" list="dogNameList"></div>
-            <div><label class="lbl" for="fB">Breed *</label><input class="inp" id="fB" placeholder="e.g. Shih Tzu" list="breedList"></div>
+            <div><label class="lbl" for="fB">Breed</label><input class="inp" id="fB" placeholder="e.g. Shih Tzu (optional)" list="breedList"></div>
         </div>
         
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-            <div><label class="lbl" for="fSt">Style</label><input class="inp" id="fSt" placeholder="e.g. Teddy bear"></div>
-            <div><label class="lbl">Size</label>
-                <div style="display:flex;gap:6px" id="szB">
-                    ${['small','medium','large'].map(s => `<button class="pill ${_sz===s?'on':''}" style="flex:1;padding:12px 2px;" data-action="set-size-form" data-size="${s}">${s}</button>`).join('')}
-                </div>
+        <div style="margin-bottom:16px"><label class="lbl">Style</label>
+            ${styleGrid('set-style-form', _st, 'fStX')}
+        </div>
+
+        <div style="margin-bottom:16px"><label class="lbl">Size</label>
+            <div style="display:flex;gap:6px" id="szB">
+                ${['small','medium','large'].map(s => `<button class="pill ${_sz===s?'on':''}" style="flex:1;padding:12px 2px;" data-action="set-size-form" data-size="${s}">${s}</button>`).join('')}
             </div>
         </div>
 
@@ -1713,13 +1755,15 @@ function renderLogForm() {
 
 function pSz(s) { vib(); _sz = s; R(); }
 function pDf(d) { vib(); _df = d; R(); }
+// Tap-again-to-deselect: style is optional, so a second tap clears it.
+function pSt(v) { vib(); _st = (_st === v ? '' : v); R(); }
 
 function submitLog() {
     vib();
     const b = document.getElementById('fB').value.trim();
     const t = Math.max(0, parseInt(document.getElementById('fT').value) || 0);
     
-    if(!b || !t) { showAlert('Please enter a breed and a valid total time.'); return; }
+    if(!t) { showAlert('Please enter a valid total time.'); return; }
     
     const dStr = document.getElementById('fDate').value || dk();
     const dObj = new Date(dStr + 'T12:00:00');
@@ -1728,7 +1772,7 @@ function submitLog() {
         id: Date.now(), ts: dObj.getTime(),
         date: dObj.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}),
         dogName: (document.getElementById('fDN').value || '').trim(),
-        breed: b, style: document.getElementById('fSt').value.trim(),
+        breed: b, style: _st === 'custom' ? ((document.getElementById('fStX') || {}).value || '').trim() : _st,
         size: _sz, min: t,
         pw: Math.max(0, parseInt(document.getElementById('fPw').value) || 0),
         bo: Math.max(0, parseInt(document.getElementById('fBo').value) || 0),
@@ -1742,12 +1786,12 @@ function submitLog() {
     });
     
     S.logs.sort((a,b) => b.ts - a.ts);
-    S.showForm = false; _sz = 'medium'; _df = 1; _phB = null; _phA = null; 
+    S.showForm = false; _sz = 'medium'; _df = 1; _phB = null; _phA = null; _st = '';
     save(); R();
 }
 
 // Edit Log Form
-let _edSz = 'medium', _edDf = 1, _edPhB = null, _edPhA = null;
+let _edSz = 'medium', _edDf = 1, _edPhB = null, _edPhA = null, _edSt = '';
 
 function editLog(id) {
     vib(); S.editId = id;
@@ -1755,6 +1799,11 @@ function editLog(id) {
     if (!l) return;
     _edSz = l.size || 'medium'; _edDf = l.diff || 1;
     _edPhB = l.before; _edPhA = l.after;
+    // Map the stored style onto the pill grid: exact/case-insensitive preset
+    // match lights that pill; any other legacy free text opens as Breed Specific.
+    const st = (l.style || '').trim();
+    const preset = CUT_STYLES.find(s => s.toLowerCase() === st.toLowerCase());
+    _edSt = preset || (st ? 'custom' : '');
     R();
 }
 
@@ -1778,15 +1827,16 @@ function renderEditForm() {
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
             <div><label class="lbl" for="eDN">Dog & Last Name</label><input class="inp" id="eDN" value="${esc(l.dogName || '')}" list="dogNameList"></div>
-            <div><label class="lbl" for="eB">Breed *</label><input class="inp" id="eB" value="${esc(l.breed || '')}" list="breedList"></div>
+            <div><label class="lbl" for="eB">Breed</label><input class="inp" id="eB" value="${esc(l.breed || '')}" list="breedList"></div>
         </div>
         
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-            <div><label class="lbl" for="eSt">Style</label><input class="inp" id="eSt" value="${esc(l.style || '')}"></div>
-            <div><label class="lbl">Size</label>
-                <div style="display:flex;gap:6px" id="edSzB">
-                    ${['small','medium','large'].map(s => `<button class="pill ${_edSz===s?'on':''}" style="flex:1;padding:12px 2px;" data-action="set-size-edit" data-size="${s}">${s}</button>`).join('')}
-                </div>
+        <div style="margin-bottom:16px"><label class="lbl">Style</label>
+            ${styleGrid('set-style-edit', _edSt, 'eStX', _edSt === 'custom' ? (l.style || '') : '')}
+        </div>
+
+        <div style="margin-bottom:16px"><label class="lbl">Size</label>
+            <div style="display:flex;gap:6px" id="edSzB">
+                ${['small','medium','large'].map(s => `<button class="pill ${_edSz===s?'on':''}" style="flex:1;padding:12px 2px;" data-action="set-size-edit" data-size="${s}">${s}</button>`).join('')}
             </div>
         </div>
         
@@ -1829,6 +1879,7 @@ function renderEditForm() {
 
 function eSz(s) { vib(); _edSz = s; R(); }
 function eDf(d) { vib(); _edDf = d; R(); }
+function eStl(v) { vib(); _edSt = (_edSt === v ? '' : v); R(); }
 
 function saveEdit() {
     vib();
@@ -1837,7 +1888,7 @@ function saveEdit() {
     
     const b = document.getElementById('eB').value.trim();
     const t = Math.max(0, parseInt(document.getElementById('eT').value) || 0);
-    if (!b || !t) { showAlert('Breed and valid time required.'); return; }
+    if (!t) { showAlert('A valid time is required.'); return; }
     
     const dStr = document.getElementById('eDate').value || dk();
     const dObj = new Date(dStr + 'T12:00:00');
@@ -1846,7 +1897,7 @@ function saveEdit() {
     l.date = dObj.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
     l.dogName = (document.getElementById('eDN').value || '').trim();
     l.breed = b;
-    l.style = document.getElementById('eSt').value.trim();
+    l.style = _edSt === 'custom' ? ((document.getElementById('eStX') || {}).value || '').trim() : _edSt;
     l.size = _edSz;
     l.diff = _edDf;
     l.min = t;
@@ -2204,7 +2255,7 @@ function renderDogs() {
         <button data-action="view-dog-me" data-name="${esc(d.name)}" style="width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid var(--bl);text-align:left">
             <div>
                 <div style="font-size:15px;font-weight:600;color:var(--tx)">${esc(d.name)}</div>
-                <div style="font-size:12px;color:var(--mu)">${esc(d.breed)} · ${d.count} visits</div>
+                <div style="font-size:12px;color:var(--mu)">${d.breed ? esc(d.breed) + ' · ' : ''}${d.count} visits</div>
             </div>
             <div style="text-align:right">
                 <div style="font-family:Fraunces,serif;font-size:16px;font-weight:600;color:${tc(d.best)}">Best: ${d.best}m</div>
@@ -2216,7 +2267,7 @@ function renderDogs() {
         <div style="font-size:12px;color:var(--mu);margin-bottom:12px;margin-top:${rpt.length ? '20px' : '0'};font-weight:600">ONE-TIME CLIENTS (${one.length})</div>
         ${one.map(d => `
         <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bl)">
-            <span style="font-size:14px;font-weight:500">${esc(d.name)} <span style="color:var(--mu);font-size:12px">${esc(d.breed)}</span></span>
+            <span style="font-size:14px;font-weight:500">${esc(d.name)}${d.breed ? ` <span style="color:var(--mu);font-size:12px">${esc(d.breed)}</span>` : ''}</span>
             <span style="font-size:13px;color:var(--mu)">${d.best}m</span>
         </div>`).join('')}` : ''}
     </div>`;
@@ -2252,7 +2303,7 @@ function renderDogDetail(name) {
             <div style="text-align:center;margin-bottom:16px">
                 <div style="font-size:24px;margin-bottom:6px">🐕</div>
                 <h2 style="font-size:22px">${esc(name)}</h2>
-                <div style="font-size:13px;color:var(--mu);margin-top:4px">${esc(hist[0].breed)} · ${hist.length} visits</div>
+                <div style="font-size:13px;color:var(--mu);margin-top:4px">${hist[0].breed ? esc(hist[0].breed) + ' · ' : ''}${hist.length} visits</div>
             </div>
             
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
@@ -2425,7 +2476,7 @@ function renderStats() {
     <div class="c" style="padding:20px;margin-bottom:20px">
         <div class="sec-lbl" style="color:var(--co)">📊 Overall</div>
         <div style="font-size:14px;color:var(--tm);line-height:1.8">
-            <p>Total: <strong>${S.logs.length}</strong> · Breeds: <strong>${new Set(S.logs.map(l => l.breed.toLowerCase())).size}</strong> · Dogs: <strong>${getDogNames().length}</strong></p>
+            <p>Total: <strong>${S.logs.length}</strong> · Breeds: <strong>${new Set(S.logs.map(l => (l.breed || '').toLowerCase()).filter(Boolean)).size}</strong> · Dogs: <strong>${getDogNames().length}</strong></p>
             <p>Avg: <strong>${a ? a + 'm' : '—'}</strong> · Best: <strong style="color:var(--sg)">${Math.min(...S.logs.map(l => l.min))}m</strong></p>
             <p>Timed: <strong>${S.logs.filter(l => l.timed).length}</strong> · Photos: <strong>${S.logs.filter(l => l.before || l.after).length}</strong></p>
             <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bl);display:flex;gap:14px">
@@ -2535,7 +2586,7 @@ async function shareBeforeAfter(id) {
         pill('BEFORE', 28);
         pill('AFTER', W / 2 + 31);
 
-        const title = l.dogName ? `${l.dogName} · ${l.breed}` : l.breed;
+        const title = [l.dogName, l.breed].filter(Boolean).join(' · ') || l.style || 'Fresh groom';
         ctx.fillStyle = '#2E2627';
         ctx.font = '600 54px "Fraunces", Georgia, serif';
         ctx.fillText(title, 48, PH + 96, W - 340);
