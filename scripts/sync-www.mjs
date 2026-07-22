@@ -16,6 +16,7 @@ const www = join(root, 'www');
 // Files and directories that make up the deployed web app.
 const ASSETS = [
   'index.html',
+  'privacy.html',
   'app.js',
   'style.css',
   'manifest.json',
