@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.11.0';
+const APP_VERSION = '0.11.1';
 
 const SK = 'groompace-v5';
 
@@ -79,6 +79,27 @@ const COMMON_BREEDS = [
     // Catch-alls
     'Mixed Breed', 'Mutt', 'Other'
 ];
+
+// Preset cut styles — tappable pills on every groom form. Stored in the same
+// free-text `style` field as before, so legacy typed styles keep working.
+// 'Breed Specific…' reveals a free-text input for pattern/custom work.
+const CUT_STYLES = [
+    'Bath & Brush', 'Bath & Tidy', 'Full Groom', 'Puppy Cut', 'Teddy Bear',
+    'Summer Cut', 'Kennel Cut', 'Full Face & Feet (FFF)', 'Lamb Cut', 'Lion Cut',
+    'Full Shave Down', 'De-Matting', 'Sanitary Trim', 'Hand Strip', 'Asian Fusion'
+];
+
+// Shared pill-grid for the cut-style selector (log / edit / timer forms).
+// `sel` = current value ('' none, 'custom' = Breed Specific, or a preset).
+function styleGrid(action, sel, customId, customVal) {
+    const isCustom = sel === 'custom';
+    return `
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${CUT_STYLES.map(s => `<button class="pill ${sel === s ? 'on' : ''}" style="padding:8px 12px;font-size:12px" data-action="${action}" data-style="${esc(s)}">${esc(s)}</button>`).join('')}
+        <button class="pill ${isCustom ? 'on' : ''}" style="padding:8px 12px;font-size:12px" data-action="${action}" data-style="custom">✏️ Breed Specific…</button>
+    </div>
+    ${isCustom ? `<input class="inp" id="${customId}" placeholder="e.g. Westie pattern" value="${esc(customVal || '')}" style="margin-top:8px">` : ''}`;
+}
 
 const ACH = [
     {id:'first', e:'🐾', t:'First Groom', d:'Log your first groom', ck: s => s.logs.length >= 1},
@@ -1098,12 +1119,13 @@ const ACTIONS = {
     'set-size':          (el) => { vib(); S.timerSize = el.dataset.size; save(); R(); },
     'set-size-form':     (el) => pSz(el.dataset.size),
     'set-size-edit':     (el) => eSz(el.dataset.size),
+    'set-style-form':    (el) => pSt(el.dataset.style),
     'set-diff-form':     (el) => pDf(Number(el.dataset.diff)),
     'set-diff-edit':     (el) => eDf(Number(el.dataset.diff)),
     'set-rv-diff':       (el) => rvDiff(Number(el.dataset.diff)),
     'toggle-chk':        (el) => { vib(); const k = el.dataset.key; S.chk[k] = !S.chk[k]; save(); R(); },
     'show-form':         ()   => { vib(); S.showForm = true; R(); },
-    'cancel-form':       ()   => { vib(); S.showForm = false; _phB = null; _phA = null; R(); },
+    'cancel-form':       ()   => { vib(); S.showForm = false; _phB = null; _phA = null; _st = ''; R(); },
     'cancel-edit':       ()   => { vib(); S.editId = null; R(); },
     'show-breed-form':   ()   => { vib(); S.showBreedForm = true; R(); },
     'cancel-breed-form': ()   => { vib(); S.showBreedForm = false; S.editBreedKey = null; R(); },
@@ -1651,7 +1673,7 @@ function renderChart(logs) {
 }
 
 // Manual Log Form
-let _sz = 'medium', _df = 1, _phB = null, _phA = null;
+let _sz = 'medium', _df = 1, _phB = null, _phA = null, _st = '';
 
 function renderLogForm() {
     return `
@@ -1670,12 +1692,13 @@ function renderLogForm() {
             <div><label class="lbl" for="fB">Breed</label><input class="inp" id="fB" placeholder="e.g. Shih Tzu (optional)" list="breedList"></div>
         </div>
         
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-            <div><label class="lbl" for="fSt">Style</label><input class="inp" id="fSt" placeholder="e.g. Teddy bear"></div>
-            <div><label class="lbl">Size</label>
-                <div style="display:flex;gap:6px" id="szB">
-                    ${['small','medium','large'].map(s => `<button class="pill ${_sz===s?'on':''}" style="flex:1;padding:12px 2px;" data-action="set-size-form" data-size="${s}">${s}</button>`).join('')}
-                </div>
+        <div style="margin-bottom:16px"><label class="lbl">Style</label>
+            ${styleGrid('set-style-form', _st, 'fStX')}
+        </div>
+
+        <div style="margin-bottom:16px"><label class="lbl">Size</label>
+            <div style="display:flex;gap:6px" id="szB">
+                ${['small','medium','large'].map(s => `<button class="pill ${_sz===s?'on':''}" style="flex:1;padding:12px 2px;" data-action="set-size-form" data-size="${s}">${s}</button>`).join('')}
             </div>
         </div>
 
@@ -1718,6 +1741,8 @@ function renderLogForm() {
 
 function pSz(s) { vib(); _sz = s; R(); }
 function pDf(d) { vib(); _df = d; R(); }
+// Tap-again-to-deselect: style is optional, so a second tap clears it.
+function pSt(v) { vib(); _st = (_st === v ? '' : v); R(); }
 
 function submitLog() {
     vib();
@@ -1733,7 +1758,7 @@ function submitLog() {
         id: Date.now(), ts: dObj.getTime(),
         date: dObj.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}),
         dogName: (document.getElementById('fDN').value || '').trim(),
-        breed: b, style: document.getElementById('fSt').value.trim(),
+        breed: b, style: _st === 'custom' ? ((document.getElementById('fStX') || {}).value || '').trim() : _st,
         size: _sz, min: t,
         pw: Math.max(0, parseInt(document.getElementById('fPw').value) || 0),
         bo: Math.max(0, parseInt(document.getElementById('fBo').value) || 0),
@@ -1747,7 +1772,7 @@ function submitLog() {
     });
     
     S.logs.sort((a,b) => b.ts - a.ts);
-    S.showForm = false; _sz = 'medium'; _df = 1; _phB = null; _phA = null; 
+    S.showForm = false; _sz = 'medium'; _df = 1; _phB = null; _phA = null; _st = '';
     save(); R();
 }
 
