@@ -1,4 +1,5 @@
-const CACHE_NAME = 'groompace-v0.11.3';
+// GroomPace service worker
+const CACHE_NAME = 'groompace-v0.13.1';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -8,20 +9,16 @@ const ASSETS_TO_CACHE = [
   './icon-192.png',
   './icon-512.png',
   './apple-touch-icon.png',
-  'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..700&family=Fraunces:opsz,wght@9..144,400..700&display=swap'
+  './fonts/DMSans-latin.woff2',
+  './fonts/Fraunces-latin.woff2'
 ];
 
 const CORE_ASSETS = ['./index.html', './style.css', './app.js'];
 const CORE_ASSET_PATHS = new Set(CORE_ASSETS.map(p => '/' + p.replace('./', '')));
-const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 function isCoreAsset(url) {
   try { return CORE_ASSET_PATHS.has(new URL(url).pathname); }
   catch { return false; }
-}
-
-function isFontRequest(url) {
-  return FONT_HOSTS.some(h => url.includes(h));
 }
 
 function cacheableResponse(response) {
@@ -73,7 +70,7 @@ self.addEventListener('fetch', event => {
       if (cachedResponse) return cachedResponse;
       return fetch(event.request).then(networkResponse => {
         const canCache = cacheableResponse(networkResponse) && event.request.method === 'GET'
-          && (networkResponse.type === 'basic' || isFontRequest(url));
+          && networkResponse.type === 'basic';
         if (canCache) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));

@@ -1,3 +1,21 @@
+/* Self-hosted variable fonts (SIL OFL 1.1 — see fonts/OFL-*.txt).
+   Family names must stay exactly 'DM Sans' / 'Fraunces': the share-image
+   canvas in app.js draws with them by name. Latin subset only. */
+@font-face {
+    font-family: 'DM Sans';
+    font-style: normal;
+    font-weight: 300 700;
+    font-display: swap;
+    src: url('fonts/DMSans-latin.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Fraunces';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url('fonts/Fraunces-latin.woff2') format('woff2');
+}
+
 /* Base Colors & Variables */
 :root {
     --bg: #FBF7F2; --card: #FFF; --ca: #F6F0E8; --bd: #EDE4D9; --bl: #F5EDE4;

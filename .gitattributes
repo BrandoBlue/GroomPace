@@ -1,0 +1,16 @@
+# Keep shell scripts and Gradle wrapper LF — CRLF breaks them on the
+# Linux/macOS CI runners that build the Android/iOS apps.
+*.sh    text eol=lf
+gradlew text eol=lf
+*.mjs   text eol=lf
+
+# Windows batch stays CRLF
+*.bat   text eol=crlf
+gradlew.bat text eol=crlf
+
+# Binary assets — never touch line endings
+*.png   binary
+*.jpg   binary
+*.woff2 binary
+*.keystore binary
+*.jks   binary

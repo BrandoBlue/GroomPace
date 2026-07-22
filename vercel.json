@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "echo \"GroomPace is a static site — no build step.\"",
+  "outputDirectory": ".",
+  "framework": null
+}

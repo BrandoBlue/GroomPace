@@ -1,0 +1,12 @@
+# Keep the wrapper toolchain out of the web deployment.
+node_modules
+www
+android
+ios
+scripts
+capacitor.config.json
+package.json
+package-lock.json
+.github
+docs
+*.md
