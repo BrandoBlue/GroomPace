@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.11.1';
+const APP_VERSION = '0.11.2';
 
 const SK = 'groompace-v5';
 
@@ -1120,6 +1120,7 @@ const ACTIONS = {
     'set-size-form':     (el) => pSz(el.dataset.size),
     'set-size-edit':     (el) => eSz(el.dataset.size),
     'set-style-form':    (el) => pSt(el.dataset.style),
+    'set-style-edit':    (el) => eStl(el.dataset.style),
     'set-diff-form':     (el) => pDf(Number(el.dataset.diff)),
     'set-diff-edit':     (el) => eDf(Number(el.dataset.diff)),
     'set-rv-diff':       (el) => rvDiff(Number(el.dataset.diff)),
@@ -1777,7 +1778,7 @@ function submitLog() {
 }
 
 // Edit Log Form
-let _edSz = 'medium', _edDf = 1, _edPhB = null, _edPhA = null;
+let _edSz = 'medium', _edDf = 1, _edPhB = null, _edPhA = null, _edSt = '';
 
 function editLog(id) {
     vib(); S.editId = id;
@@ -1785,6 +1786,11 @@ function editLog(id) {
     if (!l) return;
     _edSz = l.size || 'medium'; _edDf = l.diff || 1;
     _edPhB = l.before; _edPhA = l.after;
+    // Map the stored style onto the pill grid: exact/case-insensitive preset
+    // match lights that pill; any other legacy free text opens as Breed Specific.
+    const st = (l.style || '').trim();
+    const preset = CUT_STYLES.find(s => s.toLowerCase() === st.toLowerCase());
+    _edSt = preset || (st ? 'custom' : '');
     R();
 }
 
@@ -1811,12 +1817,13 @@ function renderEditForm() {
             <div><label class="lbl" for="eB">Breed</label><input class="inp" id="eB" value="${esc(l.breed || '')}" list="breedList"></div>
         </div>
         
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
-            <div><label class="lbl" for="eSt">Style</label><input class="inp" id="eSt" value="${esc(l.style || '')}"></div>
-            <div><label class="lbl">Size</label>
-                <div style="display:flex;gap:6px" id="edSzB">
-                    ${['small','medium','large'].map(s => `<button class="pill ${_edSz===s?'on':''}" style="flex:1;padding:12px 2px;" data-action="set-size-edit" data-size="${s}">${s}</button>`).join('')}
-                </div>
+        <div style="margin-bottom:16px"><label class="lbl">Style</label>
+            ${styleGrid('set-style-edit', _edSt, 'eStX', _edSt === 'custom' ? (l.style || '') : '')}
+        </div>
+
+        <div style="margin-bottom:16px"><label class="lbl">Size</label>
+            <div style="display:flex;gap:6px" id="edSzB">
+                ${['small','medium','large'].map(s => `<button class="pill ${_edSz===s?'on':''}" style="flex:1;padding:12px 2px;" data-action="set-size-edit" data-size="${s}">${s}</button>`).join('')}
             </div>
         </div>
         
@@ -1859,6 +1866,7 @@ function renderEditForm() {
 
 function eSz(s) { vib(); _edSz = s; R(); }
 function eDf(d) { vib(); _edDf = d; R(); }
+function eStl(v) { vib(); _edSt = (_edSt === v ? '' : v); R(); }
 
 function saveEdit() {
     vib();
@@ -1876,7 +1884,7 @@ function saveEdit() {
     l.date = dObj.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
     l.dogName = (document.getElementById('eDN').value || '').trim();
     l.breed = b;
-    l.style = document.getElementById('eSt').value.trim();
+    l.style = _edSt === 'custom' ? ((document.getElementById('eStX') || {}).value || '').trim() : _edSt;
     l.size = _edSz;
     l.diff = _edDf;
     l.min = t;
