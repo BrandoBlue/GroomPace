@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.12.0';
+const APP_VERSION = '0.12.1';
 
 const SK = 'groompace-v5';
 
@@ -2775,6 +2775,10 @@ if ('serviceWorker' in navigator) {
 // ── Init ──
 load();
 applyTheme();
+// Manifest shortcuts ("Start Timer" / "Log a Groom" on the app icon) deep-link
+// via ?tab=. Whitelisted, and only once the user is onboarded.
+const _qTab = new URLSearchParams(location.search).get('tab');
+if (_qTab && ['home','timer','log','tools','me'].includes(_qTab) && S.onboarded) S.tab = _qTab;
 _prevTab = S.tab;
 R();
 if (S.timerRunning && !S.timerPausedAt) tick();

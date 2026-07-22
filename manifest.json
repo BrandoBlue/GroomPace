@@ -1,11 +1,15 @@
 {
+  "id": "/",
   "name": "GroomPace",
   "short_name": "GroomPace",
   "description": "Track groom times, beat personal bests, and grow your speed — built for professional dog groomers.",
-  "start_url": "./index.html",
+  "lang": "en",
+  "start_url": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#FBF7F2",
   "theme_color": "#FBF7F2",
+  "categories": ["productivity", "lifestyle"],
   "icons": [
     {
       "src": "icon-192.png",
@@ -24,6 +28,22 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Start Timer",
+      "short_name": "Timer",
+      "description": "Jump straight to the live groom timer",
+      "url": "./?tab=timer",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Log a Groom",
+      "short_name": "Log",
+      "description": "Open the groom log",
+      "url": "./?tab=log",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
