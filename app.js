@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.10.3';
+const APP_VERSION = '0.11.0';
 
 const SK = 'groompace-v5';
 
@@ -888,7 +888,6 @@ function saveReview() {
     if (!rv) return;
     if (rv.min < 1) { showAlert('Groom must be at least 1 minute to save.'); return; }
     const breed = (rv.breed || '').trim();
-    if (!breed) { showAlert('Please enter a breed on the timer setup screen before saving.'); return; }
     const notes = (document.getElementById('rvNotes') || {}).value || '';
     
     S.logs.unshift({
@@ -1668,7 +1667,7 @@ function renderLogForm() {
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
             <div><label class="lbl" for="fDN">Dog & Last Name</label><input class="inp" id="fDN" placeholder="e.g. Bella Smith" list="dogNameList"></div>
-            <div><label class="lbl" for="fB">Breed *</label><input class="inp" id="fB" placeholder="e.g. Shih Tzu" list="breedList"></div>
+            <div><label class="lbl" for="fB">Breed</label><input class="inp" id="fB" placeholder="e.g. Shih Tzu (optional)" list="breedList"></div>
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
@@ -1725,7 +1724,7 @@ function submitLog() {
     const b = document.getElementById('fB').value.trim();
     const t = Math.max(0, parseInt(document.getElementById('fT').value) || 0);
     
-    if(!b || !t) { showAlert('Please enter a breed and a valid total time.'); return; }
+    if(!t) { showAlert('Please enter a valid total time.'); return; }
     
     const dStr = document.getElementById('fDate').value || dk();
     const dObj = new Date(dStr + 'T12:00:00');
@@ -1784,7 +1783,7 @@ function renderEditForm() {
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
             <div><label class="lbl" for="eDN">Dog & Last Name</label><input class="inp" id="eDN" value="${esc(l.dogName || '')}" list="dogNameList"></div>
-            <div><label class="lbl" for="eB">Breed *</label><input class="inp" id="eB" value="${esc(l.breed || '')}" list="breedList"></div>
+            <div><label class="lbl" for="eB">Breed</label><input class="inp" id="eB" value="${esc(l.breed || '')}" list="breedList"></div>
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
@@ -1843,7 +1842,7 @@ function saveEdit() {
     
     const b = document.getElementById('eB').value.trim();
     const t = Math.max(0, parseInt(document.getElementById('eT').value) || 0);
-    if (!b || !t) { showAlert('Breed and valid time required.'); return; }
+    if (!t) { showAlert('A valid time is required.'); return; }
     
     const dStr = document.getElementById('eDate').value || dk();
     const dObj = new Date(dStr + 'T12:00:00');

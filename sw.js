@@ -1,4 +1,4 @@
-const CACHE_NAME = 'groompace-v0.10.3';
+const CACHE_NAME = 'groompace-v0.11.0';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
