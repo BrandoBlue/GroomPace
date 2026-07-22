@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.12.1';
+const APP_VERSION = '0.12.2';
 
 const SK = 'groompace-v5';
 
@@ -2783,3 +2783,13 @@ _prevTab = S.tab;
 R();
 if (S.timerRunning && !S.timerPausedAt) tick();
 hydratePhotosForView();
+// "You got the update" nudge: compare against the last version this device saw.
+// (SW controllerchange is racy — on fast loads the new worker activates before
+// this script even evaluates — so a version stamp is the reliable signal.)
+try {
+    const _lastV = localStorage.getItem('groompace-last-version');
+    if (_lastV && _lastV !== APP_VERSION && S.onboarded) {
+        showToast(`GroomPace updated to v${APP_VERSION} ✂️`, 'info', 5000);
+    }
+    localStorage.setItem('groompace-last-version', APP_VERSION);
+} catch (e) {}
