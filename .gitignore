@@ -29,3 +29,4 @@ GoogleService-Info.plist
 # OS / editor cruft
 .DS_Store
 Thumbs.db
+store-shots/

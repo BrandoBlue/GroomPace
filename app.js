@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.13.1';
+const APP_VERSION = '0.13.2';
 
 const SK = 'groompace-v5';
 
@@ -88,6 +88,20 @@ const CUT_STYLES = [
     'Summer Cut', 'Kennel Cut', 'Full Face & Feet (FFF)', 'Lamb Cut', 'Lion Cut',
     'Full Shave Down', 'De-Matting', 'Sanitary Trim', 'Hand Strip', 'Asian Fusion'
 ];
+
+// Custom nav icon set — hand-drawn inline SVGs in GroomPace's own visual
+// language (soft strokes, groomer-flavored: comb for Tools, paw for Me).
+// stroke="currentColor" means active/inactive tinting comes free from the
+// nav button's CSS color — no extra states to manage.
+const _NI = (paths) =>
+    `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const NAV_ICONS = {
+    home: _NI('<path d="M4 11.2 12 4l8 7.2"/><path d="M6.2 9.8V19a1.6 1.6 0 0 0 1.6 1.6h8.4A1.6 1.6 0 0 0 17.8 19V9.8"/><path d="M10 20.4v-4.6a2 2 0 0 1 4 0v4.6"/>'),
+    timer: _NI('<circle cx="12" cy="13.6" r="7.2"/><path d="M12 13.6V9.9"/><path d="M12 6.4V3.6"/><path d="M9.6 3.6h4.8"/><path d="M18.2 7.4l1.3-1.3"/>'),
+    log: _NI('<circle cx="6" cy="6.4" r="2.4"/><circle cx="6" cy="17.6" r="2.4"/><path d="M8.1 7.8 19.4 17"/><path d="M8.1 16.2 19.4 7"/><circle cx="11.9" cy="12" r="1" fill="currentColor" stroke="none"/>'),
+    tools: _NI('<rect x="4.4" y="5.2" width="15.2" height="4.4" rx="2.2"/><path d="M7.2 9.6v9"/><path d="M10.4 9.6v7"/><path d="M13.6 9.6v9"/><path d="M16.8 9.6v7"/>'),
+    me: _NI('<ellipse cx="7" cy="9.2" rx="1.8" ry="2.3"/><ellipse cx="12" cy="7.6" rx="1.9" ry="2.4"/><ellipse cx="17" cy="9.2" rx="1.8" ry="2.3"/><path d="M12 12.6c3.1 0 5.6 2 5.6 4.4 0 1.9-1.7 3.2-3.4 2.7-.9-.3-1.6-.4-2.2-.4s-1.3.1-2.2.4c-1.7.5-3.4-.8-3.4-2.7 0-2.4 2.5-4.4 5.6-4.4Z"/>')
+};
 
 // Shared pill-grid for the cut-style selector (log / edit / timer forms).
 // `sel` = current value ('' none, 'custom' = Breed Specific, or a preset).
@@ -1142,13 +1156,13 @@ function R() {
     });
 
     const tabs = [
-        { k:'home', i:'🏠', l:'Home' }, { k:'timer', i:'⏱️', l:'Timer' },
-        { k:'log', i:'✂️', l:'Log' }, { k:'tools', i:'🔧', l:'Tools' },
-        { k:'me', i:'👤', l:'Me' }
+        { k:'home', l:'Home' }, { k:'timer', l:'Timer' },
+        { k:'log', l:'Log' }, { k:'tools', l:'Tools' },
+        { k:'me', l:'Me' }
     ];
     nv.innerHTML = tabs.map(t =>
         `<button class="${S.tab === t.k ? 'on' : ''}" data-action="go-tab" data-tab="${esc(t.k)}">
-            <span class="ni">${t.i}</span><span class="nl">${t.l}</span>
+            <span class="ni">${NAV_ICONS[t.k]}</span><span class="nl">${t.l}</span>
         </button>`
     ).join('');
     

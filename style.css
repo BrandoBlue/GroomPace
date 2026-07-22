@@ -108,6 +108,7 @@ h1, h2, h3 { font-family: 'Fraunces', serif; font-weight: 600; }
 .nav button.on { color: var(--rd); background: var(--rg); }
 .nav button:active { transform: scale(.94); }
 .nav .ni { font-size: 22px; margin-bottom: 2px; transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+.nav .ni svg { display: block; }
 .nav button.on .ni { transform: translateY(-1px) scale(1.12); }
 .nav .nl { font-size: 10px; letter-spacing: .3px; }
 .nav button.on .nl { font-weight: 600; }
