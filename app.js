@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.13.0';
+const APP_VERSION = '0.13.1';
 
 const SK = 'groompace-v5';
 
@@ -529,6 +529,33 @@ async function nativeRestoreIfEmpty() {
     return false;
 }
 
+// Share a Blob via the native OS share sheet. WKWebView exposes neither
+// navigator.share({files}) nor a working <a download>, so on native we write the
+// blob to the Cache dir and hand its file URI to the Capacitor Share plugin.
+// Returns true if it handled the share; false → caller uses the web path.
+async function nativeShareFile(blob, filename, title, text) {
+    if (!isNative()) return false;
+    const fs = _fsPlugin();
+    const Share = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Share;
+    if (!fs || !Share) return false;
+    try {
+        const dataUrl = await new Promise((res, rej) => {
+            const r = new FileReader();
+            r.onload = () => res(r.result);
+            r.onerror = rej;
+            r.readAsDataURL(blob);
+        });
+        const base64 = String(dataUrl).split(',')[1];
+        const w = await fs.writeFile({ path: filename, data: base64, directory: 'CACHE' });
+        await Share.share({ title, text, url: w.uri });
+        return true;
+    } catch (e) {
+        if (e && e.message && /cancel/i.test(e.message)) return true; // user dismissed
+        console.warn('Native share failed:', e);
+        return false;
+    }
+}
+
 // After a state-mirror restore, recover any photos whose IndexedDB blobs were
 // evicted, using the full backup's inline copies. Best-effort and idempotent.
 async function nativeReseedPhotosFromBackup() {
@@ -749,13 +776,29 @@ function applyTheme() {
         (S.theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', dark ? '#121212' : '#FBF7F2');
+    // Native: keep the OS status bar in step with the effective theme.
+    const SB = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.StatusBar;
+    if (SB) {
+        try {
+            // Style.Dark = dark text (for a light bg); Style.Light = light text (dark bg).
+            SB.setStyle({ style: dark ? 'LIGHT' : 'DARK' });
+            if (SB.setBackgroundColor) SB.setBackgroundColor({ color: dark ? '#121212' : '#FBF7F2' });
+        } catch (e) {}
+    }
 }
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (S.theme === 'auto') applyTheme();
 });
 
 // ── UI Actions ──
-function vib() { if (navigator.vibrate) navigator.vibrate(40); }
+function vib() {
+    // Native: real iOS/Android haptics (navigator.vibrate is a no-op in WKWebView).
+    // Every tappable control routes through vib(), so this one line gives the whole
+    // app native haptics inside the wrapper. Web falls back to the vibration API.
+    const H = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Haptics;
+    if (H) { try { H.impact({ style: 'LIGHT' }); return; } catch (e) {} }
+    if (navigator.vibrate) navigator.vibrate(40);
+}
 function showAlert(msg) { vib(); _modal = { type: 'alert', msg }; R(); }
 function showConfirm(msg, cb) { vib(); _modal = { type: 'confirm', msg, onConfirm: cb }; R(); }
 
@@ -2732,6 +2775,9 @@ async function shareBeforeAfter(id) {
         const fname = 'GroomPace_' + (l.dogName || l.breed || 'groom').replace(/[^a-z0-9]+/gi, '_') + '.jpg';
         const file = new File([blob], fname, { type: 'image/jpeg' });
 
+        // Native OS share sheet (WKWebView has no navigator.share with files).
+        if (await nativeShareFile(blob, fname, 'Before & After', `${title} — ${l.min} minute groom ✂️`)) return;
+
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
                 await navigator.share({ files: [file], title: 'Before & After', text: `${title} — ${l.min} minute groom ✂️` });
@@ -2768,10 +2814,18 @@ async function exportData() {
         delete payload.timerBeforePhoto;
         const json = JSON.stringify(payload);
         const blob = new Blob([json], { type: 'application/json' });
+        const fname = 'GroomPace_Backup_' + dk() + '.json';
+
+        // Native: share the backup via the OS sheet (WKWebView has no <a download>).
+        if (await nativeShareFile(blob, fname, 'GroomPace Backup', 'My GroomPace backup')) {
+            showToast('Backup ready to save or send 🐾', 'info', 3000);
+            return;
+        }
+
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'GroomPace_Backup_' + dk() + '.json';
+        a.download = fname;
         document.body.appendChild(a);
         a.click();
         a.remove();
