@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.10.2';
+const APP_VERSION = '0.10.3';
 
 const SK = 'groompace-v5';
 
@@ -90,8 +90,8 @@ const ACH = [
     {id:'s30', e:'⚡', t:'Speed Demon', d:'Under 30 min groom', ck: s => s.logs.some(l => l.min <= 30)},
     {id:'s20', e:'🔥', t:'Blazing Fast', d:'Under 20 min groom', ck: s => s.logs.some(l => l.min <= 20)},
     {id:'t5', e:'⏱️', t:'Timer Pro', d:'Use live timer 5 times', ck: s => s.logs.filter(l => l.timed).length >= 5},
-    {id:'b5', e:'🐕', t:'Breed Master', d:'Groom 5 different breeds', ck: s => new Set(s.logs.map(l => l.breed.toLowerCase())).size >= 5},
-    {id:'b10', e:'🌟', t:'Breed Expert', d:'Groom 10 different breeds', ck: s => new Set(s.logs.map(l => l.breed.toLowerCase())).size >= 10},
+    {id:'b5', e:'🐕', t:'Breed Master', d:'Groom 5 different breeds', ck: s => new Set(s.logs.map(l => (l.breed || '').toLowerCase()).filter(Boolean)).size >= 5},
+    {id:'b10', e:'🌟', t:'Breed Expert', d:'Groom 10 different breeds', ck: s => new Set(s.logs.map(l => (l.breed || '').toLowerCase()).filter(Boolean)).size >= 10},
     {id:'ph', e:'📸', t:'Shutterbug', d:'Photos on 5 grooms', ck: s => s.logs.filter(l => (l.before || l.after)).length >= 5},
     {id:'str', e:'📈', t:'Trending Up', d:'3 consecutive faster grooms', ck: s => { if(s.logs.length < 3) return false; return s.logs[0].min < s.logs[1].min && s.logs[1].min < s.logs[2].min; }},
     {id:'notes', e:'📒', t:'Note Taker', d:'Notes for 3 breeds', ck: s => Object.keys(s.breedNotes || {}).length >= 3},
@@ -533,7 +533,8 @@ function trend() {
 function pbs() {
     const m = {};
     S.logs.forEach(l => {
-        const k = l.breed.toLowerCase();
+        const k = (l.breed || '').toLowerCase();
+        if (!k) return; // breed-less grooms can't have a per-breed best
         if (!m[k] || l.min < m[k].min) m[k] = l;
     });
     return Object.values(m).sort((a,b) => a.min - b.min).slice(0, 8);
@@ -2430,7 +2431,7 @@ function renderStats() {
     <div class="c" style="padding:20px;margin-bottom:20px">
         <div class="sec-lbl" style="color:var(--co)">📊 Overall</div>
         <div style="font-size:14px;color:var(--tm);line-height:1.8">
-            <p>Total: <strong>${S.logs.length}</strong> · Breeds: <strong>${new Set(S.logs.map(l => l.breed.toLowerCase())).size}</strong> · Dogs: <strong>${getDogNames().length}</strong></p>
+            <p>Total: <strong>${S.logs.length}</strong> · Breeds: <strong>${new Set(S.logs.map(l => (l.breed || '').toLowerCase()).filter(Boolean)).size}</strong> · Dogs: <strong>${getDogNames().length}</strong></p>
             <p>Avg: <strong>${a ? a + 'm' : '—'}</strong> · Best: <strong style="color:var(--sg)">${Math.min(...S.logs.map(l => l.min))}m</strong></p>
             <p>Timed: <strong>${S.logs.filter(l => l.timed).length}</strong> · Photos: <strong>${S.logs.filter(l => l.before || l.after).length}</strong></p>
             <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bl);display:flex;gap:14px">
