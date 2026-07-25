@@ -79,7 +79,9 @@ await shot('1-home');
 // 2. Timer running with ghost race (23 min into a Goldendoodle groom)
 await page.evaluate(() => {
   S.tab = 'timer';
-  S.timerDogName = 'Bella Smith'; S.timerBreed = 'Goldendoodle'; S.timerStyle = 'Teddy Bear';
+  S.timerDogName = 'Bella Smith'; S.timerBreed = 'Goldendoodle';
+  S.timerStyle = 'Bath + Brush, Full Hair Cut';
+  S.timerNotes = 'Oatmeal shampoo · teddy bear head, #4 body · watch the left ear';
   S.timerSize = 'large';
   S.timerStart = Date.now() - 23 * 60e3;
   S.timerRunning = true; S.timerPausedAt = null; S.timerTotalPausedDuration = 0;
@@ -121,7 +123,9 @@ await shot('6-awards');
 // 7. Timer setup with style pills (shows the new feature)
 await page.evaluate(() => {
   S.tab = 'timer'; S.timerRunning = false; S.timerStart = null; S.timerReview = null;
-  S.timerDogName = 'Bella Smith'; S.timerBreed = 'Goldendoodle'; S.timerStyle = 'Teddy Bear';
+  S.timerDogName = 'Bella Smith'; S.timerBreed = 'Goldendoodle';
+  S.timerStyle = 'Bath + Brush, Full Hair Cut';
+  S.timerNotes = 'Oatmeal shampoo · teddy bear head, #4 body · watch the left ear';
   R();
 });
 await shot('7-timer-setup');

@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.14.0';
+const APP_VERSION = '0.15.0';
 
 const SK = 'groompace-v5';
 
@@ -80,14 +80,66 @@ const COMMON_BREEDS = [
     'Mixed Breed', 'Mutt', 'Other'
 ];
 
-// Preset cut styles — tappable pills on every groom form. Stored in the same
-// free-text `style` field as before, so legacy typed styles keep working.
-// 'Breed Specific…' reveals a free-text input for pattern/custom work.
-const CUT_STYLES = [
-    'Bath & Brush', 'Bath & Tidy', 'Full Groom', 'Puppy Cut', 'Teddy Bear',
-    'Summer Cut', 'Kennel Cut', 'Full Face & Feet (FFF)', 'Lamb Cut', 'Lion Cut',
-    'Full Shave Down', 'De-Matting', 'Sanitary Trim', 'Hand Strip', 'Asian Fusion'
+// The three services a groom can be. Multi-select, because salons often split
+// bathers and groomers: Bath + Brush pairs with either of the others. Full Hair
+// Cut and FFF cover overlapping work, so selecting one clears the other.
+// Each service brings its own timer steps; combos merge them and drop
+// duplicates (you only prework a dog once, however many services it gets).
+const SERVICES = [
+    { k: 'bath', l: 'Bath + Brush',  steps: ['pw','ba','bd','bo'] },
+    { k: 'full', l: 'Full Hair Cut', steps: ['pw','bo','bs','sl','hf'] },
+    { k: 'fff',  l: 'FFF',           steps: ['pw','bo','ff'] }
 ];
+const SERVICE_EXCLUSIVE = ['full', 'fff'];
+
+// Timer steps: storage key -> button label + icon. `ta` (Tail) and `fi`
+// (Finished) are retired from new grooms but stay here so older logs still
+// render their recorded times. STEP_ORDER fixes button order across combos.
+const STEPS = {
+    pw: { t: 'Pre Work', e: 'paw' },
+    ba: { t: 'Bath',     e: 'droplet' },
+    bd: { t: 'Blow Dry', e: 'wind' },
+    bo: { t: 'Brush',    e: 'comb' },
+    bs: { t: 'Body',     e: 'clippers' },
+    sl: { t: 'Legs',     e: 'scissors' },
+    hf: { t: 'Head',     e: 'dog' },
+    ff: { t: 'FFF',      e: 'sparkle' },
+    ta: { t: 'Tail',     e: 'tail' },
+    fi: { t: 'Finished', e: 'sparkle' }
+};
+const STEP_ORDER = ['pw','ba','bd','bo','bs','sl','hf','ff'];
+
+// Services live in the existing free-text `style` field as a comma-joined
+// list ("Bath + Brush, FFF"), so nothing about the storage shape changes and
+// old typed styles ("Teddy Bear") still display and survive editing.
+function serviceKeys(style) {
+    const parts = String(style || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    return SERVICES.filter(sv => parts.includes(sv.l.toLowerCase())).map(sv => sv.k);
+}
+// Anything in the stored style that isn't one of the three services — i.e. a
+// style from before this change. Preserved rather than silently dropped.
+function legacyStyle(style) {
+    const known = SERVICES.map(sv => sv.l.toLowerCase());
+    return String(style || '').split(',').map(s => s.trim())
+        .filter(s => s && !known.includes(s.toLowerCase())).join(', ');
+}
+function styleFromKeys(keys, legacy) {
+    const labels = SERVICES.filter(sv => keys.includes(sv.k)).map(sv => sv.l);
+    if (legacy && legacy.trim()) labels.push(legacy.trim());
+    return labels.join(', ');
+}
+// Toggle a service, enforcing the Full Hair Cut / FFF exclusivity.
+function toggleService(keys, k) {
+    if (keys.includes(k)) return keys.filter(x => x !== k);
+    const next = keys.filter(x => !(SERVICE_EXCLUSIVE.includes(k) && SERVICE_EXCLUSIVE.includes(x)));
+    return [...next, k];
+}
+// De-duplicated union of every selected service's steps, in STEP_ORDER.
+function stepsForServices(keys) {
+    const want = new Set();
+    SERVICES.forEach(sv => { if (keys.includes(sv.k)) sv.steps.forEach(s => want.add(s)); });
+    return STEP_ORDER.filter(s => want.has(s));
+}
 
 // ── Custom icon system ─────────────────────────────────────────────────────
 // Hand-drawn inline SVGs in GroomPace's own visual language (soft rounded
@@ -145,6 +197,8 @@ const _ICP = {
     pause: '<rect x="7" y="5" width="3.4" height="14" rx="1.2"/><rect x="13.6" y="5" width="3.4" height="14" rx="1.2"/>',
     play: '<path d="M7.5 5.5v13a1 1 0 0 0 1.5.87l10.5-6.5a1 1 0 0 0 0-1.74L9 4.63A1 1 0 0 0 7.5 5.5Z"/>',
     tail: '<path d="M5.5 19c-.6-5 1.4-9.6 5.4-12.2 2.4-1.5 4.9-1.8 6.7-.9-1.5 0-2.9.5-4 1.5 1.3 0 2.5.4 3.3 1.4-1.6-.3-3 .1-4.1 1.2-1.1 1.1-1.6 2.6-1.4 4.1"/>',
+    droplet: '<path d="M12 3.6c3.3 3.9 5.3 6.5 5.3 9.4a5.3 5.3 0 0 1-10.6 0c0-2.9 2-5.5 5.3-9.4Z"/>',
+    wind: '<path d="M3.5 9h8.6a2.6 2.6 0 1 0-2.6-2.6"/><path d="M3.5 13.2h10.2a2.7 2.7 0 1 1-2.7 2.7"/><path d="M3.5 17.4h5.2"/>',
     stop: '<rect x="6" y="6" width="12" height="12" rx="2.4"/>',
     hourglass: '<path d="M7 4h10"/><path d="M7 20h10"/><path d="M7.5 4c0 4 4.5 5 4.5 8s-4.5 4-4.5 8"/><path d="M16.5 4c0 4-4.5 5-4.5 8s4.5 4 4.5 8"/>',
     turtle: '<path d="M6 15a6 4.5 0 0 1 12 0Z"/><path d="M18 14.5c1.2 0 2-.6 2.4-1.3"/><path d="M6.5 15c-1 .2-1.8-.2-2.3-.9"/><path d="M8.5 18.5 8 20"/><path d="M15.5 18.5 16 20"/><path d="M17.5 12.2c.6-.5 1.5-.5 2 .1"/>',
@@ -166,16 +220,15 @@ function diffDot(n) {
     return `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5" fill="${c}"/></svg>`;
 }
 
-// Shared pill-grid for the cut-style selector (log / edit / timer forms).
-// `sel` = current value ('' none, 'custom' = Breed Specific, or a preset).
-function styleGrid(action, sel, customId, customVal) {
-    const isCustom = sel === 'custom';
+// Shared service picker (timer setup / log form / edit form). Multi-select
+// pills; `keys` is the array of selected service keys. `legacy` renders an
+// editable field for a pre-existing style so old grooms don't lose it.
+function serviceGrid(action, keys, legacy, legacyId) {
     return `
-    <div style="display:flex;flex-wrap:wrap;gap:6px">
-        ${CUT_STYLES.map(s => `<button class="pill ${sel === s ? 'on' : ''}" style="padding:8px 12px;font-size:12px" data-action="${action}" data-style="${esc(s)}">${esc(s)}</button>`).join('')}
-        <button class="pill ${isCustom ? 'on' : ''}" style="padding:8px 12px;font-size:12px;display:inline-flex;align-items:center;gap:5px" data-action="${action}" data-style="custom">${IC('pencil')} Breed Specific…</button>
+    <div style="display:flex;gap:6px">
+        ${SERVICES.map(sv => `<button class="pill ${keys.includes(sv.k) ? 'on' : ''}" style="flex:1;padding:12px 4px;font-size:13px" data-action="${action}" data-svc="${sv.k}">${esc(sv.l)}</button>`).join('')}
     </div>
-    ${isCustom ? `<input class="inp" id="${customId}" placeholder="e.g. Westie pattern" value="${esc(customVal || '')}" style="margin-top:8px">` : ''}`;
+    ${legacy ? `<label class="lbl" for="${legacyId}" style="margin-top:10px">Previous style</label><input class="inp" id="${legacyId}" value="${esc(legacy)}">` : ''}`;
 }
 
 const ACH = [
@@ -212,7 +265,7 @@ let S = {
     // Timer State
     timerStart: null, timerRunning: false, timerSplits: [],
     timerPausedAt: null, timerTotalPausedDuration: 0,
-    timerBreed: '', timerStyle: '', timerSize: 'medium', timerDogName: '', timerBeforePhoto: null,
+    timerBreed: '', timerStyle: '', timerNotes: '', timerSize: 'medium', timerDogName: '', timerBeforePhoto: null,
     timerReview: null, timerGhost: null, 
     
     // UI State
@@ -376,7 +429,7 @@ function photoPick(inputId, target) {
 }
 
 // ── Schema Version & Migrations ──
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 const MIGRATIONS = {
     4: (state) => {
@@ -397,6 +450,18 @@ const MIGRATIONS = {
                 timed: !!log.timed,
                 before: log.before || null,
                 after: log.after || null
+            }));
+        }
+        return state;
+    },
+    // v5: adds the Bath / Blow Dry / FFF step fields. Purely additive — every
+    // existing field (including ta/fi from retired steps) is left untouched,
+    // so old grooms keep their recorded times.
+    5: (state) => {
+        if (Array.isArray(state.logs)) {
+            state.logs = state.logs.map(log => ({
+                ...log,
+                ba: log.ba || 0, bd: log.bd || 0, ff: log.ff || 0
             }));
         }
         return state;
@@ -682,12 +747,11 @@ function fmtDurSec(sec) {
     return s ? m + ':' + String(s).padStart(2, '0') : m + 'm';
 }
 
-const SECT_KEYS = [
-    { k: 'pw', s: 'Pre', n: 'Prework' }, { k: 'bo', s: 'Brush', n: 'Brush Out' },
-    { k: 'bs', s: 'Shave', n: 'Body Shave' }, { k: 'sl', s: 'Legs', n: 'Legs & Feet' },
-    { k: 'hf', s: 'Head', n: 'Head & Face' }, { k: 'ta', s: 'Tail', n: 'Tail' },
-    { k: 'fi', s: 'Fin', n: 'Finished' }
-];
+// Display order for step times on cards and breakdowns. Retired steps (Tail,
+// Finished) stay on the end so older grooms still show what they recorded —
+// a step with no time is never rendered, so they cost nothing on new grooms.
+const SECT_SHORT = { pw:'Pre', ba:'Bath', bd:'Dry', bo:'Brush', bs:'Body', sl:'Legs', hf:'Head', ff:'FFF', ta:'Tail', fi:'Fin' };
+const SECT_KEYS = [...STEP_ORDER, 'ta', 'fi'].map(k => ({ k, s: SECT_SHORT[k], n: STEPS[k].t }));
 
 function sectDur(l, key) {
     if (l.sect && l.sect[key]) return fmtDurSec(l.sect[key]);
@@ -1082,14 +1146,13 @@ function stopTimer() {
     const tot = elapsed();
     const sp = S.timerSplits;
     
-    let pw=0, bo=0, bs=0, sl=0, hf=0, ta=0, fi=0;
+    // Per-step minutes, keyed by step id (pw/ba/bd/bo/bs/sl/hf/ff…).
+    const mins = { pw:0, ba:0, bd:0, bo:0, bs:0, sl:0, hf:0, ff:0, ta:0, fi:0 };
     const sect = {};
-    
-    let lastElapsed = 0; 
-    let lastTime = S.timerStart; 
-    
-    const stMap = { pw: 'Prework', bo: 'Brush', bs: 'Shave', sl: 'Legs/Feet', hf: 'Head/Face', ta: 'Tail', fi: 'Finished' };
-    
+
+    let lastElapsed = 0;
+    let lastTime = S.timerStart;
+
     const parsedSplits = sp.map(x => {
         let durMs = 0;
         
@@ -1105,25 +1168,20 @@ function stopTimer() {
         sect[x.label] = durSec;
         const durM = durSec >= 60 ? Math.round(durSec / 60) : (durSec > 0 ? 1 : 0);
         
-        if(x.label === 'pw') pw = durM;
-        if(x.label === 'bo') bo = durM;
-        if(x.label === 'bs') bs = durM;
-        if(x.label === 'sl') sl = durM;
-        if(x.label === 'hf') hf = durM;
-        if(x.label === 'ta') ta = durM;
-        if(x.label === 'fi') fi = durM;
-        
-        return { label: stMap[x.label] || x.label, dur: fmtT(durMs), sec: durSec };
+        if (x.label in mins) mins[x.label] = durM;
+
+        return { label: (STEPS[x.label] || {}).t || x.label, dur: fmtT(durMs), sec: durSec };
     });
 
     S.timerReview = {
         breed: S.timerBreed || '',
         style: S.timerStyle || '',
+        notes: S.timerNotes || '',
         size: S.timerSize,
         dogName: S.timerDogName || '',
         min: fmtM(tot),
         totalMs: tot,
-        pw, bo, bs, sl, hf, ta, fi,
+        mins,
         sect,
         before: S.timerBeforePhoto || null,
         splits: parsedSplits,
@@ -1142,13 +1200,12 @@ function cancelTimer() {
     S.timerPausedAt = null; S.timerTotalPausedDuration = 0;
     S.timerSplits = []; S.timerReview = null; 
     S.timerBeforePhoto = null; S.timerDogName = ''; 
-    S.timerBreed = ''; S.timerStyle = ''; _tStC = false;
+    S.timerBreed = ''; S.timerStyle = ''; S.timerNotes = '';
     S.timerGhost = null;
     save(); R();
 }
 
 let _rvDf = 1, _rvAfter = null;
-let _tStC = false; // timer setup: Breed Specific (custom style) mode
 
 function saveReview() {
     vib();
@@ -1156,20 +1213,25 @@ function saveReview() {
     if (!rv) return;
     if (rv.min < 1) { showAlert('Groom must be at least 1 minute to save.'); return; }
     const breed = (rv.breed || '').trim();
-    const notes = (document.getElementById('rvNotes') || {}).value || '';
-    
+    // One Notes field: what she planned at setup, edited on this screen.
+    const notes = (document.getElementById('rvNotes') || {}).value || rv.notes || '';
+    const m = rv.mins || {};
+
     S.logs.unshift({
         id: Date.now(), ts: Date.now(),
         date: new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}),
         dogName: rv.dogName || '', breed, style: rv.style, size: rv.size,
-        min: rv.min, pw: rv.pw, bo: rv.bo, bs: rv.bs, sl: rv.sl, hf: rv.hf, ta: rv.ta, fi: rv.fi,
+        min: rv.min,
+        pw: m.pw || 0, ba: m.ba || 0, bd: m.bd || 0, bo: m.bo || 0,
+        bs: m.bs || 0, sl: m.sl || 0, hf: m.hf || 0, ff: m.ff || 0,
+        ta: m.ta || 0, fi: m.fi || 0,
         sect: rv.sect || null,
         diff: _rvDf, notes: notes.trim(), timed: true, before: rv.before, after: _rvAfter
     });
     
     const isPB = !!(rv.prevBest && rv.min < rv.prevBest);
     S.timerReview = null; S.timerBeforePhoto = null; S.timerDogName = '';
-    S.timerBreed = ''; S.timerStyle = ''; _tStC = false;
+    S.timerBreed = ''; S.timerStyle = ''; S.timerNotes = '';
     _rvDf = 1; _rvAfter = null;
     save(); S.tab = 'log'; R();
     showToast(isPB ? `New personal best saved — ${rv.min}m! 🎉` : 'Groom saved 🐾', 'info');
@@ -1178,7 +1240,7 @@ function saveReview() {
 function discardReview() {
     showConfirm("Discard this timed groom?", () => {
         S.timerReview = null; S.timerBeforePhoto = null; S.timerDogName = ''; 
-        S.timerBreed = ''; S.timerStyle = ''; _tStC = false;
+        S.timerBreed = ''; S.timerStyle = ''; S.timerNotes = '';
         _rvDf = 1; _rvAfter = null; save(); R();
     });
 }
@@ -1366,14 +1428,12 @@ const ACTIONS = {
     'set-size':          (el) => { vib(); S.timerSize = el.dataset.size; save(); R(); },
     'set-size-form':     (el) => pSz(el.dataset.size),
     'set-size-edit':     (el) => eSz(el.dataset.size),
-    'set-style-form':    (el) => pSt(el.dataset.style),
-    'set-style-edit':    (el) => eStl(el.dataset.style),
-    'set-style-timer':   (el) => {
+    'set-service-form':  (el) => pSvc(el.dataset.svc),
+    'set-service-edit':  (el) => eSvc(el.dataset.svc),
+    'set-service-timer': (el) => {
         vib();
-        const v = el.dataset.style;
-        const wasCustom = _tStC || (S.timerStyle && !CUT_STYLES.includes(S.timerStyle));
-        if (v === 'custom') { _tStC = !wasCustom; S.timerStyle = ''; }
-        else { _tStC = false; S.timerStyle = (S.timerStyle === v ? '' : v); }
+        const keys = toggleService(serviceKeys(S.timerStyle), el.dataset.svc);
+        S.timerStyle = styleFromKeys(keys, legacyStyle(S.timerStyle));
         save(); R();
     },
     'set-diff-form':     (el) => pDf(Number(el.dataset.diff)),
@@ -1381,7 +1441,7 @@ const ACTIONS = {
     'set-rv-diff':       (el) => rvDiff(Number(el.dataset.diff)),
     'toggle-chk':        (el) => { vib(); const k = el.dataset.key; S.chk[k] = !S.chk[k]; save(); R(); },
     'show-form':         ()   => { vib(); S.showForm = true; R(); },
-    'cancel-form':       ()   => { vib(); S.showForm = false; _phB = null; _phA = null; _st = ''; R(); },
+    'cancel-form':       ()   => { vib(); S.showForm = false; _phB = null; _phA = null; _svc = []; R(); },
     'cancel-edit':       ()   => { vib(); S.editId = null; R(); },
     'show-breed-form':   ()   => { vib(); S.showBreedForm = true; R(); },
     'cancel-breed-form': ()   => { vib(); S.showBreedForm = false; S.editBreedKey = null; R(); },
@@ -1502,8 +1562,8 @@ function wireActions() {
                 const prev = document.getElementById('bnPrev');
                 if (prev) prev.innerHTML = renderBreedNoteCard(S.timerBreed);
             }
-            // Custom timer style types straight into state (no full R(), caret safe).
-            if (e.target && e.target.id === 'tSX') S.timerStyle = e.target.value;
+            // Timer notes type straight into state (no full R(), caret safe).
+            if (e.target && e.target.id === 'tNotes') S.timerNotes = e.target.value;
         });
     }
     const cancelBtn = document.getElementById('modalCancel');
@@ -1693,7 +1753,7 @@ function renderTimer() {
                 <div style="margin-bottom:16px"><label class="lbl">Difficulty</label>
                     <div style="display:flex;gap:8px" id="rvDf">
                         <button class="diff-btn on-1" style="flex:1;" data-action="set-rv-diff" data-diff="1">${diffDot(1)} Easy</button>
-                        <button class="diff-btn" style="flex:1;" data-action="set-rv-diff" data-diff="2">${diffDot(2)} Mod</button>
+                        <button class="diff-btn" style="flex:1;" data-action="set-rv-diff" data-diff="2">${diffDot(2)} Med</button>
                         <button class="diff-btn" style="flex:1;" data-action="set-rv-diff" data-diff="3">${diffDot(3)} Hard</button>
                     </div>
                 </div>
@@ -1702,7 +1762,9 @@ function renderTimer() {
                     ${renderPhotoPicker('rvP', 'rvAfter', !!_rvAfter, _rvAfter ? `<button data-action="show-photo" data-source="review" data-which="A" style="padding:0;background:none;border:none;cursor:pointer;">${photoThumb(_rvAfter)}</button>` : '')}
                 </div>
 
-                <div style="margin-bottom:18px"><label class="lbl" for="rvNotes">Notes</label><input class="inp" id="rvNotes" placeholder="How did it go?"></div>
+                <div style="margin-bottom:18px"><label class="lbl" for="rvNotes">Notes</label>
+                    <textarea class="inp" id="rvNotes" rows="3" placeholder="Your plan, plus how it went" style="resize:vertical">${esc(rv.notes || '')}</textarea>
+                </div>
                 
                 <div style="display:flex;gap:12px">
                     <button data-action="save-review" class="btn-primary" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px">Save ${IC('paw')}</button>
@@ -1714,8 +1776,7 @@ function renderTimer() {
 
     // Setup Screen
     if (!run && !S.timerStart) {
-        // Custom mode if flagged, or if a restored/legacy style isn't a preset.
-        const tSel = (_tStC || (S.timerStyle && !CUT_STYLES.includes(S.timerStyle))) ? 'custom' : S.timerStyle;
+        const tKeys = serviceKeys(S.timerStyle);
         return `
         <div style="padding-top:28px">
             <h2 style="font-size:26px;margin-bottom:6px">Live Timer</h2>
@@ -1726,8 +1787,12 @@ function renderTimer() {
                     <div><label class="lbl" for="tDN">Dog & Last Name</label><input class="inp" id="tDN" placeholder="e.g. Bella Smith" value="${esc(S.timerDogName)}" list="dogNameList"></div>
                     <div><label class="lbl" for="tB">Breed</label><input class="inp" id="tB" placeholder="e.g. Goldendoodle" value="${esc(S.timerBreed)}" list="breedList"></div>
                 </div>
-                <div style="margin-bottom:16px"><label class="lbl">Style</label>
-                    ${styleGrid('set-style-timer', tSel, 'tSX', tSel === 'custom' ? S.timerStyle : '')}
+                <div style="margin-bottom:16px"><label class="lbl">Service</label>
+                    ${serviceGrid('set-service-timer', tKeys)}
+                    <p style="font-size:11px;color:var(--di);margin-top:7px;line-height:1.5">Pick one or combine — your step buttons match what you selected.</p>
+                </div>
+                <div style="margin-bottom:16px"><label class="lbl" for="tNotes">Notes</label>
+                    <textarea class="inp" id="tNotes" rows="2" placeholder="Shampoo, cut plan, anything to remember mid-groom" style="resize:vertical">${esc(S.timerNotes || '')}</textarea>
                 </div>
                 <div style="margin-bottom:16px"><label class="lbl">Size</label>
                     <div style="display:flex;gap:6px">
@@ -1741,18 +1806,15 @@ function renderTimer() {
             
             <div id="bnPrev">${renderBreedNoteCard(S.timerBreed)}</div>
 
-            <button data-action="start-timer-setup" style="width:100%;padding:20px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:16px;color:var(--wh);font-size:18px;font-weight:600;box-shadow:0 8px 24px rgba(212,132,154,.35)">▶ Start Timer</button>
+            <button data-action="start-timer-setup" style="width:100%;padding:20px;background:linear-gradient(135deg,var(--ro),var(--rd));border-radius:16px;color:var(--wh);font-size:18px;font-weight:600;box-shadow:0 8px 24px rgba(212,132,154,.35);display:inline-flex;align-items:center;justify-content:center;gap:8px">${IC('play')} Start Timer</button>
         </div>`;
     }
 
-    // Running Screen
-    const stMap = { pw: 'Prework', bo: 'Brush', bs: 'Shave', sl: 'Legs/Feet', hf: 'Head/Face', ta: 'Tail', fi: 'Finished' };
-    const splitBtns = [
-        {l:'pw', e:'paw', t:'Prework'}, {l:'bo', e:'comb', t:'Brush'},
-        {l:'bs', e:'clippers', t:'Shave'},   {l:'sl', e:'scissors', t:'Legs'},
-        {l:'hf', e:'dog', t:'Head'},    {l:'ta', e:'tail', t:'Tail'},
-        {l:'fi', e:'sparkle', t:'Done'}
-    ];
+    // Running Screen — step buttons come from the services picked at setup.
+    // If nothing was picked, offer every step so the timer is never unusable.
+    const runKeys = serviceKeys(S.timerStyle);
+    const runSteps = runKeys.length ? stepsForServices(runKeys) : STEP_ORDER;
+    const splitBtns = runSteps.map(k => ({ l: k, e: STEPS[k].e, t: STEPS[k].t }));
 
     return `
     <div style="padding-top:40px;text-align:center">
@@ -1768,8 +1830,14 @@ function renderTimer() {
             </button>
         </div>
 
+        ${S.timerNotes && S.timerNotes.trim() ? `
+        <div class="c" style="padding:14px 16px;margin-bottom:14px;text-align:left;border:1px solid rgba(155,141,196,.3)">
+            <div class="sec-lbl" style="color:var(--lv);margin-bottom:6px;display:flex;align-items:center;gap:6px">${IC('notebook')} Your Plan</div>
+            <div style="font-size:14px;color:var(--tm);line-height:1.55;white-space:pre-wrap">${esc(S.timerNotes.trim())}</div>
+        </div>` : ''}
+
         ${renderBreedNoteCard(S.timerBreed)}
-        
+
         ${S.timerGhost ? `
         <div class="c ghost-card">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
@@ -1800,7 +1868,7 @@ function renderTimer() {
                 const prev = i === 0 ? 0 : sp[i-1].elapsed;
                 return `
                 <div style="display:flex;justify-content:space-between;padding:8px 0;${i < sp.length - 1 ? 'border-bottom:1px solid var(--bl)' : ''}">
-                    <span style="font-size:14px;color:var(--tm)">${stMap[x.label] || x.label} <span style="color:var(--di);font-size:11px">(step time)</span></span>
+                    <span style="font-size:14px;color:var(--tm)">${(STEPS[x.label] || {}).t || x.label} <span style="color:var(--di);font-size:11px">(step time)</span></span>
                     <span style="font-size:14px;font-weight:600">${fmtT(x.elapsed - prev)}</span>
                 </div>`;
             }).join('')}
@@ -1933,7 +2001,7 @@ function renderChart(logs) {
 }
 
 // Manual Log Form
-let _sz = 'medium', _df = 1, _phB = null, _phA = null, _st = '';
+let _sz = 'medium', _df = 1, _phB = null, _phA = null, _svc = [];
 
 function renderLogForm() {
     return `
@@ -1952,8 +2020,8 @@ function renderLogForm() {
             <div><label class="lbl" for="fB">Breed</label><input class="inp" id="fB" placeholder="e.g. Shih Tzu (optional)" list="breedList"></div>
         </div>
         
-        <div style="margin-bottom:16px"><label class="lbl">Style</label>
-            ${styleGrid('set-style-form', _st, 'fStX')}
+        <div style="margin-bottom:16px"><label class="lbl">Service</label>
+            ${serviceGrid('set-service-form', _svc)}
         </div>
 
         <div style="margin-bottom:16px"><label class="lbl">Size</label>
@@ -1965,20 +2033,15 @@ function renderLogForm() {
         <div style="margin-bottom:16px"><label class="lbl">Difficulty</label>
             <div style="display:flex;gap:6px" id="dfB">
                 <button class="diff-btn ${_df===1?'on-1':''}" style="flex:1" data-action="set-diff-form" data-diff="1">${diffDot(1)} Easy</button>
-                <button class="diff-btn ${_df===2?'on-2':''}" style="flex:1" data-action="set-diff-form" data-diff="2">${diffDot(2)} Mod</button>
+                <button class="diff-btn ${_df===2?'on-2':''}" style="flex:1" data-action="set-diff-form" data-diff="2">${diffDot(2)} Med</button>
                 <button class="diff-btn ${_df===3?'on-3':''}" style="flex:1" data-action="set-diff-form" data-diff="3">${diffDot(3)} Hard</button>
             </div>
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
             <div><label class="lbl" for="fT">Total Time (min) *</label><input class="inp" id="fT" type="number" inputmode="numeric" placeholder="45" style="border-color:var(--ro)"></div>
-            <div><label class="lbl" for="fPw">Prework (min)</label><input class="inp" id="fPw" type="number" inputmode="numeric"></div>
-            <div><label class="lbl" for="fBo">Brush Out (min)</label><input class="inp" id="fBo" type="number" inputmode="numeric"></div>
-            <div><label class="lbl" for="fBs">Body Shave (min)</label><input class="inp" id="fBs" type="number" inputmode="numeric"></div>
-            <div><label class="lbl" for="fSl">Legs & Feet (min)</label><input class="inp" id="fSl" type="number" inputmode="numeric"></div>
-            <div><label class="lbl" for="fHf">Head & Face (min)</label><input class="inp" id="fHf" type="number" inputmode="numeric"></div>
-            <div><label class="lbl" for="fTa">Tail (min)</label><input class="inp" id="fTa" type="number" inputmode="numeric"></div>
-            <div><label class="lbl" for="fFi">Finished (min)</label><input class="inp" id="fFi" type="number" inputmode="numeric"></div>
+            ${(_svc.length ? stepsForServices(_svc) : STEP_ORDER).map(k =>
+                `<div><label class="lbl" for="f_${k}">${STEPS[k].t} (min)</label><input class="inp" id="f_${k}" type="number" inputmode="numeric"></div>`).join('')}
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
@@ -2001,8 +2064,18 @@ function renderLogForm() {
 
 function pSz(s) { vib(); _sz = s; R(); }
 function pDf(d) { vib(); _df = d; R(); }
-// Tap-again-to-deselect: style is optional, so a second tap clears it.
-function pSt(v) { vib(); _st = (_st === v ? '' : v); R(); }
+function pSvc(k) { vib(); _svc = toggleService(_svc, k); R(); }
+
+// Reads every step's minute input by id prefix. Steps not currently rendered
+// (because their service isn't selected) simply come back 0.
+function stepMinutesFromForm(prefix) {
+    const out = {};
+    Object.keys(STEPS).forEach(k => {
+        const el = document.getElementById(prefix + k);
+        out[k] = el ? Math.max(0, parseInt(el.value) || 0) : 0;
+    });
+    return out;
+}
 
 function submitLog() {
     vib();
@@ -2018,26 +2091,20 @@ function submitLog() {
         id: Date.now(), ts: dObj.getTime(),
         date: dObj.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}),
         dogName: (document.getElementById('fDN').value || '').trim(),
-        breed: b, style: _st === 'custom' ? ((document.getElementById('fStX') || {}).value || '').trim() : _st,
+        breed: b, style: styleFromKeys(_svc),
         size: _sz, min: t,
-        pw: Math.max(0, parseInt(document.getElementById('fPw').value) || 0),
-        bo: Math.max(0, parseInt(document.getElementById('fBo').value) || 0),
-        bs: Math.max(0, parseInt(document.getElementById('fBs').value) || 0),
-        sl: Math.max(0, parseInt(document.getElementById('fSl').value) || 0),
-        hf: Math.max(0, parseInt(document.getElementById('fHf').value) || 0),
-        ta: Math.max(0, parseInt(document.getElementById('fTa').value) || 0),
-        fi: Math.max(0, parseInt(document.getElementById('fFi').value) || 0),
+        ...stepMinutesFromForm('f_'),
         diff: _df, notes: document.getElementById('fN').value.trim(),
         timed: false, before: _phB, after: _phA
     });
-    
+
     S.logs.sort((a,b) => b.ts - a.ts);
-    S.showForm = false; _sz = 'medium'; _df = 1; _phB = null; _phA = null; _st = '';
+    S.showForm = false; _sz = 'medium'; _df = 1; _phB = null; _phA = null; _svc = [];
     save(); R();
 }
 
 // Edit Log Form
-let _edSz = 'medium', _edDf = 1, _edPhB = null, _edPhA = null, _edSt = '';
+let _edSz = 'medium', _edDf = 1, _edPhB = null, _edPhA = null, _edSvc = [];
 
 function editLog(id) {
     vib(); S.editId = id;
@@ -2045,11 +2112,10 @@ function editLog(id) {
     if (!l) return;
     _edSz = l.size || 'medium'; _edDf = l.diff || 1;
     _edPhB = l.before; _edPhA = l.after;
-    // Map the stored style onto the pill grid: exact/case-insensitive preset
-    // match lights that pill; any other legacy free text opens as Breed Specific.
-    const st = (l.style || '').trim();
-    const preset = CUT_STYLES.find(s => s.toLowerCase() === st.toLowerCase());
-    _edSt = preset || (st ? 'custom' : '');
+    // Light up whichever services the stored style names. Anything else it
+    // holds (a style from before services existed) is shown in its own field
+    // by renderEditForm so editing never silently discards it.
+    _edSvc = serviceKeys(l.style);
     R();
 }
 
@@ -2076,8 +2142,8 @@ function renderEditForm() {
             <div><label class="lbl" for="eB">Breed</label><input class="inp" id="eB" value="${esc(l.breed || '')}" list="breedList"></div>
         </div>
         
-        <div style="margin-bottom:16px"><label class="lbl">Style</label>
-            ${styleGrid('set-style-edit', _edSt, 'eStX', _edSt === 'custom' ? (l.style || '') : '')}
+        <div style="margin-bottom:16px"><label class="lbl">Service</label>
+            ${serviceGrid('set-service-edit', _edSvc, legacyStyle(l.style), 'eStX')}
         </div>
 
         <div style="margin-bottom:16px"><label class="lbl">Size</label>
@@ -2089,20 +2155,21 @@ function renderEditForm() {
         <div style="margin-bottom:16px"><label class="lbl">Difficulty</label>
             <div style="display:flex;gap:6px" id="edDfB">
                 <button class="diff-btn ${_edDf===1?'on-1':''}" style="flex:1;" data-action="set-diff-edit" data-diff="1">${diffDot(1)} Easy</button>
-                <button class="diff-btn ${_edDf===2?'on-2':''}" style="flex:1;" data-action="set-diff-edit" data-diff="2">${diffDot(2)} Mod</button>
+                <button class="diff-btn ${_edDf===2?'on-2':''}" style="flex:1;" data-action="set-diff-edit" data-diff="2">${diffDot(2)} Med</button>
                 <button class="diff-btn ${_edDf===3?'on-3':''}" style="flex:1;" data-action="set-diff-edit" data-diff="3">${diffDot(3)} Hard</button>
             </div>
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
             <div><label class="lbl" for="eT">Total (min) *</label><input class="inp" id="eT" type="number" inputmode="numeric" value="${l.min || ''}" style="border-color:var(--sg)"></div>
-            <div><label class="lbl" for="ePw">Prework</label><input class="inp" id="ePw" type="number" inputmode="numeric" value="${l.pw || ''}"></div>
-            <div><label class="lbl" for="eBo">Brush Out</label><input class="inp" id="eBo" type="number" inputmode="numeric" value="${l.bo || ''}"></div>
-            <div><label class="lbl" for="eBs">Body Shave</label><input class="inp" id="eBs" type="number" inputmode="numeric" value="${l.bs || l.cl || ''}"></div>
-            <div><label class="lbl" for="eSl">Legs & Feet</label><input class="inp" id="eSl" type="number" inputmode="numeric" value="${l.sl || l.sc || ''}"></div>
-            <div><label class="lbl" for="eHf">Head & Face</label><input class="inp" id="eHf" type="number" inputmode="numeric" value="${l.hf || ''}"></div>
-            <div><label class="lbl" for="eTa">Tail</label><input class="inp" id="eTa" type="number" inputmode="numeric" value="${l.ta || ''}"></div>
-            <div><label class="lbl" for="eFi">Finished</label><input class="inp" id="eFi" type="number" inputmode="numeric" value="${l.fi || ''}"></div>
+            ${(() => {
+                // Steps for the chosen services, plus any retired step this
+                // groom already has time on (Tail/Finished) so it stays editable.
+                const shown = _edSvc.length ? stepsForServices(_edSvc) : STEP_ORDER;
+                const extra = Object.keys(STEPS).filter(k => !shown.includes(k) && (l[k] || 0) > 0);
+                return [...shown, ...extra].map(k =>
+                    `<div><label class="lbl" for="e_${k}">${STEPS[k].t}</label><input class="inp" id="e_${k}" type="number" inputmode="numeric" value="${l[k] || ''}"></div>`).join('');
+            })()}
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
@@ -2125,7 +2192,7 @@ function renderEditForm() {
 
 function eSz(s) { vib(); _edSz = s; R(); }
 function eDf(d) { vib(); _edDf = d; R(); }
-function eStl(v) { vib(); _edSt = (_edSt === v ? '' : v); R(); }
+function eSvc(k) { vib(); _edSvc = toggleService(_edSvc, k); R(); }
 
 function saveEdit() {
     vib();
@@ -2143,17 +2210,11 @@ function saveEdit() {
     l.date = dObj.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
     l.dogName = (document.getElementById('eDN').value || '').trim();
     l.breed = b;
-    l.style = _edSt === 'custom' ? ((document.getElementById('eStX') || {}).value || '').trim() : _edSt;
+    l.style = styleFromKeys(_edSvc, ((document.getElementById('eStX') || {}).value || ''));
     l.size = _edSz;
     l.diff = _edDf;
     l.min = t;
-    l.pw = Math.max(0, parseInt(document.getElementById('ePw').value) || 0);
-    l.bo = Math.max(0, parseInt(document.getElementById('eBo').value) || 0);
-    l.bs = Math.max(0, parseInt(document.getElementById('eBs').value) || 0);
-    l.sl = Math.max(0, parseInt(document.getElementById('eSl').value) || 0);
-    l.hf = Math.max(0, parseInt(document.getElementById('eHf').value) || 0);
-    l.ta = Math.max(0, parseInt(document.getElementById('eTa').value) || 0);
-    l.fi = Math.max(0, parseInt(document.getElementById('eFi').value) || 0);
+    Object.assign(l, stepMinutesFromForm('e_'));
     l.notes = document.getElementById('eN').value.trim();
     l.before = _edPhB;
     l.after = _edPhA;
@@ -2528,8 +2589,8 @@ function renderDogDetail(name) {
     const avg = Math.round(hist.reduce((a,l) => a + l.min, 0) / hist.length);
     const imp = hist.length >= 2 && hist[0].min < hist[1].min;
     
-    const secs = ['pw','bo','bs','sl','hf','ta','fi'];
-    const secN = { pw:'Prework', bo:'Brush', bs:'Shave', sl:'Legs/Feet', hf:'Head/Face', ta:'Tail', fi:'Finish' };
+    const secs = SECT_KEYS.map(x => x.k);
+    const secN = Object.fromEntries(SECT_KEYS.map(x => [x.k, x.n]));
     const secAvg = {};
     
     secs.forEach(s => {
@@ -2931,13 +2992,9 @@ function sanitizeImport(raw) {
                 style: String(l.style || ''),
                 size: ['small','medium','large'].includes(l.size) ? l.size : 'medium',
                 min: Math.max(0, Number(l.min) || 0),
-                pw: Math.max(0, Number(l.pw) || 0),
-                bo: Math.max(0, Number(l.bo) || 0),
-                bs: Math.max(0, Number(l.bs) || 0),
-                sl: Math.max(0, Number(l.sl) || 0),
-                hf: Math.max(0, Number(l.hf) || 0),
-                ta: Math.max(0, Number(l.ta) || 0),
-                fi: Math.max(0, Number(l.fi) || 0),
+                // Every known step, current and retired, so a restore never
+                // drops recorded times (invariant: import must stay lossless).
+                ...Object.fromEntries(SECT_KEYS.map(({ k }) => [k, Math.max(0, Number(l[k]) || 0)])),
                 diff: [1,2,3].includes(l.diff) ? l.diff : 1,
                 notes: String(l.notes || ''),
                 timed: !!l.timed,
