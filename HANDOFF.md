@@ -13,7 +13,7 @@ framework and no build step**, deployed to production automatically by Vercel.
 It is currently being wrapped with Capacitor to ship on the Apple App Store
 and Google Play.
 
-**Current shipped version: v0.14.0** (live at https://groom-pace.vercel.app).
+**Current shipped version: v0.15.0** (live at https://groom-pace.vercel.app).
 
 ---
 
@@ -102,9 +102,11 @@ Breaking any of these loses real user data or bricks returning users:
 
 1. **`localStorage` key `groompace-v5` and the `SCHEMA_VERSION` / `MIGRATIONS`
    logic must keep loading existing data.** Never rename the key without a
-   copy-over migration. `SCHEMA_VERSION` is currently `4`; migrations live in
+   copy-over migration. `SCHEMA_VERSION` is currently `5`; migrations live in
    the `MIGRATIONS` object. To change the data shape, bump `SCHEMA_VERSION`
    and add a migration function — never mutate existing fields in place.
+   Migration 5 is a good template: it adds fields additively and leaves every
+   existing value (including retired ones) untouched.
 2. **IndexedDB `groompace-photos` and the `idb:` ref format** must not change
    without a migration.
 3. **Every release bumps `CACHE_NAME` in `sw.js`** or returning users get
@@ -158,11 +160,26 @@ Everything here is shipped to production unless noted.
   breed shows a "+ Add breed" chip that opens the edit form to fill it in
   later. Breed-less grooms never render blank and are excluded from per-breed
   bests / breed-count badges.
-- **Cut style is a preset picker.** A `CUT_STYLES` constant drives a tappable
-  pill grid on all three forms (Bath & Brush, Puppy Cut, Teddy Bear,
-  Summer/Kennel Cut, FFF, Lamb/Lion Cut, Full Shave Down, De-Matting, etc.),
-  plus a "Breed Specific…" option that reveals a free-text input. Stored as
-  the same single `style` string, so old typed styles still display and edit.
+- **Services drive the timer (v0.15.0).** A groom is one or more of three
+  services — **Bath + Brush**, **Full Hair Cut**, **FFF** — chosen with a
+  multi-select pill row on all three forms (`SERVICES` constant). Full Hair
+  Cut and FFF overlap, so picking one clears the other; Bath + Brush pairs
+  with either. The timer's **step buttons are generated from the selection**
+  (`STEPS` / `STEP_ORDER` / `stepsForServices()`), merging each service's
+  steps and de-duplicating:
+  Bath + Brush → Pre Work · Bath · Blow Dry · Brush;
+  Full Hair Cut → Pre Work · Brush · Body · Legs · Head;
+  FFF → Pre Work · Brush · FFF.
+  Selections are stored in the existing single `style` string as a
+  comma-joined list ("Bath + Brush, FFF"), so the storage shape never changed.
+  A style from before this system (e.g. "Teddy Bear") is detected by
+  `legacyStyle()` and surfaced in its own editable field so it is never lost.
+- **Notes are one field.** Written on the timer setup screen, displayed as a
+  "Your Plan" card under the running timer, pre-filled on the review screen,
+  and editable afterwards — all the same `notes` value.
+- **Retired:** the "Tail" and "Finished" steps, and the small "Done"
+  checkpoint button. Old grooms that recorded those times still display and
+  edit them; new grooms simply never offer them.
 
 **Store-readiness hardening:**
 - Self-hosted fonts (zero external requests).
@@ -319,7 +336,10 @@ Line numbers drift, so search by name:
 - `const SCHEMA_VERSION` / `MIGRATIONS` / `function migrate` — data migrations.
 - `function load` / `function save` — persistence (load-bearing; test I/O).
 - `const _ICP` / `function IC` / `function diffDot` / `NAV_ICONS` — icon system.
-- `const CUT_STYLES` / `function styleGrid` — cut-style presets.
+- `const SERVICES` / `const STEPS` / `STEP_ORDER` — the service + step model.
+- `stepsForServices` / `toggleService` / `serviceKeys` / `legacyStyle` /
+  `styleFromKeys` / `serviceGrid` — service selection and its storage format.
+- `const SECT_KEYS` — display order for step times (includes retired steps).
 - `const ACH` / `function renderAch` — achievements.
 - `const ACTIONS` / `function wireActions` — the event-delegation map.
 - `function R` — the master re-render (and its input snapshot/restore).
