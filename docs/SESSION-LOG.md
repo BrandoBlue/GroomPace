@@ -18,80 +18,44 @@ only answered questions and changed no files, skip it — no entry needed.
 
 ---
 
-## 2026-08-06 — v0.18.0 · Date-range picker, popup stays open
+## 2026-08-06 — v0.16.0 → v0.18.0 · Log date pickers + scroll that stays put
 
-**Did:** Two fixes on her feedback. (1) The calendar no longer closes on a pick —
-every tap re-renders in place and she closes it with Done or the backdrop, so a
-mis-tap is one tap from being fixed. (2) The Week chip is now a hotel-style
-range: first tap sets the start (hint switches to "From <day> — now tap the last
-day"), second tap applies the span live; tapping before the start restarts the
-selection. The Week filter is therefore an arbitrary span, held in
-`S.logRange = { start, end }` (null = this Mon–Sun week) with `rangeKeys()` /
-`rangeBounds()` / `rangeLabel()` / `shiftRange()` around it. The chip arrows now
-step the span by its own length rather than by a fixed week. A saved
-`logWeekOffset` from an older build is converted to a real range on load.
+**Did:** Reworked how she finds grooms in the Log, plus the scroll bug behind it.
 
-**Next:** Unchanged — store submission, Google Play account first.
+- **Day filter with a calendar.** "Today" is now **Day**: arrows step a day, and
+  the date chip opens a month grid. `S.logDate` (`'YYYY-MM-DD'`, null = today).
+- **Week filter is a date *range*.** Hotel-style: first tap sets the start (hint
+  becomes "From <day> — now tap the last day"), second tap applies the span;
+  tapping before the start restarts it. Held in `S.logRange = { start, end }`
+  (null = this Mon–Sun week) with `rangeKeys()` / `rangeBounds()` /
+  `rangeLabel()` / `shiftRange()`. The chip arrows step by the span's own length.
+- **The calendar is in-app**, not `<input type="date">` — a transparent native
+  input over the chip was clickable but never opened a picker in Chrome, and the
+  wrapper would have been worse. `renderCalendar()` into `modalRoot`, driven by
+  `_cal = { mode:'day'|'week', month, sel }`; Monday-first, a dot on every day
+  with grooms, month arrows capped at the current month. It **stays open** on a
+  pick so a mis-tap costs one tap, and closes on Done or the backdrop.
+- **All filter removed** — it loaded the whole history and wasn't usable. The bar
+  is Day | Week; a saved `logFilter: 'all'` falls back to Day in `load()`.
+- **Scroll no longer jumps to the top.** `R()` snapshots `window.scrollY` and
+  restores it after the re-render, so opening/closing a photo keeps her on the
+  same dog. Deliberate jumps opt out via `_scrollToTop` (tab switches, filter
+  changes); the edit and manual-log forms open at the top and return to the same
+  dog when closed (`openInlineForm()` / `closeInlineForm()`, `_formReturnY`).
 
-**Watch out:** `S.logWeekOffset` survives in state only as that migration input;
-nothing reads it after `load()`. The band tint is a `::before` reaching half the
-grid gap on each side — don't give `.cal-cell.in-range` a background or the
-seams come back.
-
-## 2026-08-06 — v0.17.0 · Week calendar, All filter retired
-
-**Did:** The Week chip now opens the same calendar popup in week mode — tapping
-any day selects that whole week (`weekOffsetOf()` converts the tapped day into
-`S.logWeekOffset`), with the week's Mon–Sun row lit as one band and future weeks
-disabled. `_dayCal` became `_cal = { mode:'day'|'week', month }` so one
-`renderCalendar()` serves both chips. Removed the All filter: it loaded the
-whole history and wasn't usable. The Log is now Day | Week, and anyone whose
-saved `logFilter` was `'all'` lands on Day (guard in `load()`).
-
-**Next:** Unchanged — store submission, Google Play account first.
-
-**Watch out:** A week that straddles two months only shows its own days in each
-month view (Jun 29–30 in June, Jul 1–5 in July) — that's expected, and the popup
-opens on the month of the week's Monday. `scripts/store-shots.mjs` used the
-retired `'all'` filter and now uses `'week'`.
-
-## 2026-08-06 — v0.16.1 · In-app calendar popup
-
-**Did:** The v0.16.0 date chip used a transparent `<input type="date">` over the
-label — it was clickable but never opened a picker (Chrome only opens on the
-calendar indicator, and hiding the input kills that). Replaced it with an
-in-app month grid rendered into `modalRoot` (`renderDayCalendar()`, module state
-`_dayCal` = the 'YYYY-MM' on screen). Monday-first, a dot on every day that has
-grooms, future days disabled, month arrows, Today/Close. Same `data-action`
-pattern as everything else, so it works identically on web and in the Capacitor
-wrapper. The panel carries `data-action="noop"` so clicks inside it don't hit
-the backdrop's close.
-
-**Next:** Unchanged — store submission, Google Play account first.
-
-**Watch out:** `_dayCal` sits in R()'s modal branch *above* `_lightbox`; keep
-that order or a photo opened from a calendar day would render behind it.
-
-## 2026-08-06 — v0.16.0 · Log day picker + scroll that stays put
-
-**Did:** Two Log-tab fixes she asked for. (1) The "Today" filter is now a **Day**
-filter: arrows step a day at a time and the date chip in the middle is a native
-calendar popup (`.day-pick` label with an invisible `input[type=date]` over it,
-capped at today), so she can jump straight to a date instead of scrolling. New
-`S.logDate` (`'YYYY-MM-DD'`, null = today) plus `dayRange()`/`shiftDayKey()`;
-UI-only state, no schema change. (2) `R()` now snapshots `window.scrollY` and
-restores it after the re-render, so opening/closing a photo or a lightbox no
-longer throws her back to the top. Deliberate jumps opt out via `_scrollToTop`
-(tab switches, filter/day/week changes); the edit and manual-log forms open at
-the top and put her back on the same dog when closed (`openInlineForm()` /
-`closeInlineForm()`, `_formReturnY`).
+All UI-only state — no schema change, backup/restore untouched. Verified with
+seeded data through `store-shots/` puppeteer scripts (those files are gitignored;
+`npm run shots` needs `npm i puppeteer --no-save` first — it is *not* a declared
+dependency).
 
 **Next:** Store submission — buy the Google Play account first (the 12-testers /
-14-day clock is the long pole).
+14-day clock is the long pole). Everything to paste is in `docs/STORE_LISTING.md`.
 
-**Watch out:** The day-picker input is deliberately **id-less** — `R()`'s input
-snapshot restores by id and would put a stale date back after a change. Verified
-locally with seeded data; not merged to `main`.
+**Watch out:** `S.logWeekOffset` survives in state *only* as the migration input
+that converts an older save into a range — nothing reads it after `load()`. The
+range band tint is a `::before` reaching half the grid gap each side; give
+`.cal-cell.in-range` a real background and the seams come back. `_cal` sits above
+`_lightbox` in R()'s modal branch — keep that order.
 
 ## 2026-07-24 — Session continuity system (no app change)
 
