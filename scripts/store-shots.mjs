@@ -39,7 +39,7 @@ const state = {
   goals: { dogsPerDay: 6, avgTarget: 55 },
   chk: {}, standards: [],
   timerSplits: [], timerStart: null, timerRunning: false,
-  logFilter: 'all'
+  logFilter: 'week'
 };
 
 const browser = await puppeteer.launch({ headless: 'new' });
@@ -109,7 +109,7 @@ await page.evaluate(() => {
 await shot('3-new-pb');
 
 // 4. Log tab
-await page.evaluate(() => { S.timerReview = null; S.tab = 'log'; S.logFilter = 'all'; R(); });
+await page.evaluate(() => { S.timerReview = null; S.tab = 'log'; S.logFilter = 'week'; R(); });
 await shot('4-log');
 
 // 5. Stats

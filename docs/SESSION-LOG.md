@@ -18,6 +18,23 @@ only answered questions and changed no files, skip it — no entry needed.
 
 ---
 
+## 2026-08-06 — v0.17.0 · Week calendar, All filter retired
+
+**Did:** The Week chip now opens the same calendar popup in week mode — tapping
+any day selects that whole week (`weekOffsetOf()` converts the tapped day into
+`S.logWeekOffset`), with the week's Mon–Sun row lit as one band and future weeks
+disabled. `_dayCal` became `_cal = { mode:'day'|'week', month }` so one
+`renderCalendar()` serves both chips. Removed the All filter: it loaded the
+whole history and wasn't usable. The Log is now Day | Week, and anyone whose
+saved `logFilter` was `'all'` lands on Day (guard in `load()`).
+
+**Next:** Unchanged — store submission, Google Play account first.
+
+**Watch out:** A week that straddles two months only shows its own days in each
+month view (Jun 29–30 in June, Jul 1–5 in July) — that's expected, and the popup
+opens on the month of the week's Monday. `scripts/store-shots.mjs` used the
+retired `'all'` filter and now uses `'week'`.
+
 ## 2026-08-06 — v0.16.1 · In-app calendar popup
 
 **Did:** The v0.16.0 date chip used a transparent `<input type="date">` over the

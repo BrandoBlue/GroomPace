@@ -1,6 +1,6 @@
 {
   "name": "groompace",
-  "version": "0.16.1",
+  "version": "0.17.0",
   "private": true,
   "description": "GroomPace — the performance app for professional dog groomers.",
   "type": "module",

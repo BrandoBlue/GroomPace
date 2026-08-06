@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.16.1';
+const APP_VERSION = '0.17.0';
 
 const SK = 'groompace-v5';
 
@@ -294,10 +294,11 @@ let _formReturnY = 0;
 // Lightbox state holds array of photo refs and index
 let _lightbox = null;
 
-// Log day picker: the 'YYYY-MM' the calendar popup is showing, or null when
-// closed. Built in-app rather than with <input type="date"> so it looks the
-// same — and actually opens — on every browser and inside the app wrapper.
-let _dayCal = null;
+// Log date picker: { mode: 'day' | 'week', month: 'YYYY-MM' } while the calendar
+// popup is open, null when closed. Built in-app rather than with
+// <input type="date"> so it looks the same — and actually opens — on every
+// browser and inside the app wrapper.
+let _cal = null;
 
 // ── Photo Storage (IndexedDB) ──
 const DB_NAME = 'groompace-photos';
@@ -550,7 +551,8 @@ function load() {
             if (S.timerStart !== null && typeof S.timerStart !== 'number') S.timerStart = null;
             if (S.timerPausedAt === undefined) S.timerPausedAt = null;
             if (S.timerTotalPausedDuration === undefined) S.timerTotalPausedDuration = 0;
-            if (!S.logFilter) S.logFilter = 'today';
+            // The All-time filter is gone; anyone saved on it lands on Day.
+            if (!['today', 'week'].includes(S.logFilter)) S.logFilter = 'today';
             if (S.logWeekOffset === undefined) S.logWeekOffset = 0;
             if (typeof S.logDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(S.logDate)) S.logDate = null;
             if (!['auto','light','dark'].includes(S.theme)) S.theme = 'auto';
@@ -824,6 +826,23 @@ function groomsByDay() {
     return counts;
 }
 
+// The Monday of the week a 'YYYY-MM-DD' falls in — weeks start Monday here,
+// matching weekRange().
+function mondayKeyOf(key) {
+    const [y, m, d] = key.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
+    return dayKeyOf(dt.getTime());
+}
+
+// S.logWeekOffset that puts the Week filter on the week containing this day.
+function weekOffsetOf(key) {
+    const [ay, am, ad] = mondayKeyOf(key).split('-').map(Number);
+    const [by, bm, bd] = mondayKeyOf(dk()).split('-').map(Number);
+    const diff = new Date(ay, am - 1, ad).getTime() - new Date(by, bm - 1, bd).getTime();
+    return Math.round(diff / (7 * 864e5));
+}
+
 // Shift a 'YYYY-MM' month key by whole months.
 function shiftMonthKey(key, delta) {
     const [y, m] = key.split('-').map(Number);
@@ -845,8 +864,7 @@ function dayRange(key) {
 }
 
 function filterLogs(logs) {
-    if (S.logFilter === 'all') return logs;
-    if (S.logFilter === 'today') {
+    if (S.logFilter !== 'week') {
         const { start, end } = dayRange(logDayKey());
         return logs.filter(l => l.ts && l.ts >= start && l.ts < end);
     }
@@ -860,8 +878,7 @@ function hasSectionData(l) {
 }
 
 function filterLabel() {
-    if (S.logFilter === 'today') return dayRange(logDayKey()).label;
-    if (S.logFilter === 'all') return 'All Time';
+    if (S.logFilter !== 'week') return dayRange(logDayKey()).label;
     return weekRange(S.logWeekOffset || 0).label;
 }
 
@@ -1362,8 +1379,8 @@ function R() {
                 </div>
             </div>
         </div>`;
-    } else if (_dayCal) {
-        mod.innerHTML = renderDayCalendar();
+    } else if (_cal) {
+        mod.innerHTML = renderCalendar();
     } else if (_lightbox && _lightbox.refs) {
         const src = photoSrc(_lightbox.refs[_lightbox.index]);
         const label = _lightbox.labels[_lightbox.index];
@@ -1505,17 +1522,25 @@ const ACTIONS = {
     'set-theme':         (el) => { vib(); S.theme = el.dataset.theme; applyTheme(); save(); R(); },
     'set-log-filter':    (el) => { vib(); S.logFilter = el.dataset.filter; if (el.dataset.filter !== 'week') S.logWeekOffset = 0; if (el.dataset.filter !== 'today') S.logDate = null; save(); topR(); },
     'noop':              ()   => {},
-    'open-day-cal':      ()   => { vib(); _dayCal = logDayKey().slice(0, 7); R(); },
-    'close-day-cal':     ()   => { vib(); _dayCal = null; R(); },
-    'cal-prev-month':    ()   => { vib(); _dayCal = shiftMonthKey(_dayCal, -1); R(); },
-    'cal-next-month':    ()   => { vib(); if (_dayCal < dk().slice(0, 7)) { _dayCal = shiftMonthKey(_dayCal, 1); R(); } },
-    'cal-jump-today':    ()   => { vib(); _dayCal = null; S.logDate = null; save(); topR(); },
+    'open-day-cal':      ()   => { vib(); _cal = { mode: 'day', month: logDayKey().slice(0, 7) }; R(); },
+    'open-week-cal':     ()   => { vib(); _cal = { mode: 'week', month: dayKeyOf(weekRange(S.logWeekOffset || 0).start).slice(0, 7) }; R(); },
+    'close-cal':         ()   => { vib(); _cal = null; R(); },
+    'cal-prev-month':    ()   => { vib(); _cal.month = shiftMonthKey(_cal.month, -1); R(); },
+    'cal-next-month':    ()   => { vib(); if (_cal.month < dk().slice(0, 7)) { _cal.month = shiftMonthKey(_cal.month, 1); R(); } },
+    'cal-jump-today':    ()   => {
+        vib();
+        if (_cal && _cal.mode === 'week') S.logWeekOffset = 0; else S.logDate = null;
+        _cal = null; save(); topR();
+    },
     'pick-day':          (el) => {
         const key = el.dataset.key;
-        if (!key || key > dk()) return;
+        if (!key) return;
+        const week = _cal && _cal.mode === 'week';
+        if (week ? mondayKeyOf(key) > mondayKeyOf(dk()) : key > dk()) return;
         vib();
-        _dayCal = null;
-        S.logDate = key === dk() ? null : key;
+        _cal = null;
+        if (week) S.logWeekOffset = weekOffsetOf(key);
+        else S.logDate = key === dk() ? null : key;
         save(); topR();
     },
     'log-day-prev':      ()   => { vib(); S.logDate = shiftDayKey(logDayKey(), -1); save(); topR(); },
@@ -1523,6 +1548,7 @@ const ACTIONS = {
     'log-day-today':     ()   => { vib(); S.logDate = null; save(); topR(); },
     'log-week-prev':     ()   => { vib(); S.logWeekOffset = (S.logWeekOffset || 0) - 1; save(); topR(); },
     'log-week-next':     ()   => { vib(); if ((S.logWeekOffset || 0) < 0) { S.logWeekOffset = (S.logWeekOffset || 0) + 1; save(); topR(); } },
+    'log-week-today':    ()   => { vib(); S.logWeekOffset = 0; save(); topR(); },
     'set-size':          (el) => { vib(); S.timerSize = el.dataset.size; save(); R(); },
     'set-size-form':     (el) => pSz(el.dataset.size),
     'set-size-edit':     (el) => eSz(el.dataset.size),
@@ -1993,27 +2019,31 @@ function renderLog() {
     const label = filterLabel();
     const dayKey = logDayKey();
     const isToday = dayKey === dk();
+    const isThisWeek = (S.logWeekOffset || 0) === 0;
+    const week = S.logFilter === 'week';
     const count = `${filtered.length} dog${filtered.length !== 1 ? 's' : ''}`;
 
     return `
     <div class="page">
         <h2 class="page-title">Groom Log</h2>
-        <p class="page-sub">${S.logFilter === 'all' ? 'Full history — use filters to focus on a day or a week.'
-            : S.logFilter === 'today' ? 'Showing ' + esc(label) + ' — tap the date to jump to any day.'
-            : 'Showing ' + esc(label.toLowerCase()) + '\'s grooms — tap a dog for full history.'}</p>
+        <p class="page-sub">${week ? 'Showing ' + esc(label.toLowerCase()) + ' — tap the dates to jump to any week.'
+            : 'Showing ' + esc(label) + ' — tap the date to jump to any day.'}</p>
 
         ${!S.showForm && !S.editId ? `
         <div class="filter-bar">
-            <button class="sub-tab ${S.logFilter === 'today' ? 'on' : ''}" data-action="set-log-filter" data-filter="today" style="display:inline-flex;align-items:center;justify-content:center;gap:5px">${IC('sun')} Day</button>
-            <button class="sub-tab ${S.logFilter === 'week' ? 'on' : ''}" data-action="set-log-filter" data-filter="week" style="display:inline-flex;align-items:center;justify-content:center;gap:5px">${IC('calendar')} Week</button>
-            <button class="sub-tab ${S.logFilter === 'all' ? 'on' : ''}" data-action="set-log-filter" data-filter="all" style="display:inline-flex;align-items:center;justify-content:center;gap:5px">${IC('clipboard')} All</button>
+            <button class="sub-tab ${!week ? 'on' : ''}" data-action="set-log-filter" data-filter="today" style="display:inline-flex;align-items:center;justify-content:center;gap:5px">${IC('sun')} Day</button>
+            <button class="sub-tab ${week ? 'on' : ''}" data-action="set-log-filter" data-filter="week" style="display:inline-flex;align-items:center;justify-content:center;gap:5px">${IC('calendar')} Week</button>
         </div>
-        ${S.logFilter === 'week' ? `
+        ${week ? `
         <div class="week-nav">
-            <button data-action="log-week-prev" style="display:inline-flex;align-items:center;justify-content:center">${IC('arrowL')}</button>
-            <span class="week-nav-label">${esc(label)} · ${filtered.length} dog${filtered.length !== 1 ? 's' : ''}</span>
-            <button data-action="log-week-next" ${(S.logWeekOffset || 0) >= 0 ? 'disabled style="opacity:.35"' : 'style="display:inline-flex;align-items:center;justify-content:center"'}>${IC('arrowR')}</button>
-        </div>` : S.logFilter === 'today' ? `
+            <button data-action="log-week-prev" aria-label="Previous week" style="display:inline-flex;align-items:center;justify-content:center">${IC('arrowL')}</button>
+            <button class="day-pick" data-action="open-week-cal" aria-label="Pick a week">
+                <span class="day-pick-icon">${IC('calendar')}</span>
+                <span>${esc(label)} · ${count}</span>
+            </button>
+            <button data-action="log-week-next" ${isThisWeek ? 'disabled style="opacity:.35" aria-label="Next week"' : 'aria-label="Next week" style="display:inline-flex;align-items:center;justify-content:center"'}>${IC('arrowR')}</button>
+        </div>
+        ${!isThisWeek ? `<div style="text-align:center;margin-bottom:14px"><button class="btn-ghost" data-action="log-week-today">Back to this week</button></div>` : ''}` : `
         <div class="week-nav">
             <button data-action="log-day-prev" aria-label="Previous day" style="display:inline-flex;align-items:center;justify-content:center">${IC('arrowL')}</button>
             <button class="day-pick" data-action="open-day-cal" aria-label="Pick a date">
@@ -2022,17 +2052,17 @@ function renderLog() {
             </button>
             <button data-action="log-day-next" ${isToday ? 'disabled style="opacity:.35" aria-label="Next day"' : 'aria-label="Next day" style="display:inline-flex;align-items:center;justify-content:center"'}>${IC('arrowR')}</button>
         </div>
-        ${!isToday ? `<div style="text-align:center;margin-bottom:14px"><button class="btn-ghost" data-action="log-day-today">Back to today</button></div>` : ''}` : `
-        <div style="text-align:center;font-size:14px;font-weight:600;color:var(--tm);margin-bottom:14px">${esc(label)} · ${count}</div>`}` : ''}
+        ${!isToday ? `<div style="text-align:center;margin-bottom:14px"><button class="btn-ghost" data-action="log-day-today">Back to today</button></div>` : ''}`}` : ''}
         
         ${S.editId ? renderEditForm() : S.showForm ? renderLogForm() : `
         <button data-action="show-form" class="btn-primary" style="margin-bottom:20px;background:var(--rg);color:var(--rd);border:2px dashed rgba(212,132,154,.35);box-shadow:none;display:inline-flex;align-items:center;justify-content:center;gap:7px">${IC('paw')} Log a Groom Manually</button>`}
         
         ${filtered.length === 0 && !S.showForm && !S.editId ? `
         <div class="empty">
-            <div class="empty-icon">${S.logFilter === 'today' ? IC('sun') : S.logFilter === 'week' ? IC('calendar') : IC('scissors')}</div>
-            <div class="empty-title">${S.logFilter === 'today' ? (isToday ? 'No grooms today yet' : 'No grooms on ' + esc(label)) : S.logFilter === 'week' ? 'No grooms this week' : 'No grooms yet'}</div>
-            <div class="empty-sub">${S.logFilter === 'all' ? 'Track your first groom to see trends and personal bests.' : 'Start the timer when your next dog hits the table.'}</div>
+            <div class="empty-icon">${week ? IC('calendar') : IC('sun')}</div>
+            <div class="empty-title">${week ? (isThisWeek ? 'No grooms this week' : 'No grooms in ' + esc(label))
+                : isToday ? 'No grooms today yet' : 'No grooms on ' + esc(label)}</div>
+            <div class="empty-sub">Start the timer when your next dog hits the table.</div>
             <button data-action="go-tab" data-tab="timer" class="btn-primary" style="max-width:260px;margin:0 auto;display:inline-flex;align-items:center;justify-content:center;gap:7px">${IC('stopwatch')} Start Timer</button>
         </div>` : `
         
@@ -2092,32 +2122,45 @@ function renderLog() {
     </div>`;
 }
 
-// Month-grid popup for the Log's Day filter. Monday-first, like weekRange().
-function renderDayCalendar() {
-    const sel = logDayKey();
+// Month-grid popup behind both date chips. Monday-first, like weekRange().
+// Day mode selects one date; week mode selects the whole week a date sits in.
+function renderCalendar() {
+    const week = _cal.mode === 'week';
     const today = dk();
-    const [y, m] = _dayCal.split('-').map(Number);
+    const thisWeek = mondayKeyOf(today);
+    const selDay = logDayKey();
+    const selWeek = mondayKeyOf(dayKeyOf(weekRange(S.logWeekOffset || 0).start));
+    const [y, m] = _cal.month.split('-').map(Number);
     const first = new Date(y, m - 1, 1);
     const monthLabel = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     const days = new Date(y, m, 0).getDate();
     const lead = (first.getDay() + 6) % 7;
     const counts = groomsByDay();
-    const atCurrentMonth = _dayCal >= today.slice(0, 7);
+    const atCurrentMonth = _cal.month >= today.slice(0, 7);
 
     let cells = '';
     for (let i = 0; i < lead; i++) cells += '<span class="cal-cell cal-blank"></span>';
     for (let d = 1; d <= days; d++) {
         const key = y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+        const monday = mondayKeyOf(key);
         const n = counts[key] || 0;
-        const cls = 'cal-cell' + (key === sel ? ' on' : '') + (key === today ? ' is-today' : '');
-        cells += `<button class="${cls}" data-action="pick-day" data-key="${key}" ${key > today ? 'disabled' : ''} aria-label="${d} — ${n} groom${n !== 1 ? 's' : ''}">
+        // Week mode picks whole weeks, so a future day in the current week is
+        // still a valid tap; day mode stops at today.
+        const off = week ? monday > thisWeek : key > today;
+        const on = week ? monday === selWeek : key === selDay;
+        const cls = 'cal-cell'
+            + (on ? (week ? ' in-week' : ' on') : '')
+            + (week && on && (d === 1 || (d + lead - 1) % 7 === 0) ? ' week-start' : '')
+            + (week && on && ((d + lead) % 7 === 0 || d === days) ? ' week-end' : '')
+            + (key === today ? ' is-today' : '');
+        cells += `<button class="${cls}" data-action="pick-day" data-key="${key}" ${off ? 'disabled' : ''} aria-label="${d} — ${n} groom${n !== 1 ? 's' : ''}">
             <span class="cal-num">${d}</span>
             ${n ? '<span class="cal-dot"></span>' : ''}
         </button>`;
     }
 
     return `
-    <div class="modal-backdrop" data-action="close-day-cal">
+    <div class="modal-backdrop" data-action="close-cal">
         <div class="c fi cal-pop" data-action="noop">
             <div class="cal-head">
                 <button data-action="cal-prev-month" aria-label="Previous month">${IC('arrowL')}</button>
@@ -2128,9 +2171,10 @@ function renderDayCalendar() {
                 ${['M','T','W','T','F','S','S'].map(d => `<span>${d}</span>`).join('')}
             </div>
             <div class="cal-grid">${cells}</div>
+            <div class="cal-hint">${week ? 'Tap any day to see that whole week' : 'Dots mark days you groomed'}</div>
             <div class="cal-foot">
-                <button class="btn-ghost" data-action="cal-jump-today">Today</button>
-                <button class="btn-ghost" data-action="close-day-cal">Close</button>
+                <button class="btn-ghost" data-action="cal-jump-today">${week ? 'This week' : 'Today'}</button>
+                <button class="btn-ghost" data-action="close-cal">Close</button>
             </div>
         </div>
     </div>`;

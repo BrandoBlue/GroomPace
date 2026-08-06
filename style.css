@@ -189,7 +189,6 @@ textarea.inp { resize: vertical; min-height: 60px; }
 .filter-bar { display: flex; gap: 6px; margin-bottom: var(--sp-md); background: var(--ca); padding: 6px; border-radius: 14px; align-items: center; }
 .filter-bar .sub-tab { flex: 1; padding: 12px 10px; text-align: center; min-height: 44px; }
 .week-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: var(--sp-md); }
-.week-nav-label { font-size: 14px; font-weight: 600; color: var(--tx); flex: 1; text-align: center; }
 .week-nav button { padding: 10px 14px; background: var(--ca); border-radius: 10px; color: var(--tm); font-weight: 600; min-height: 44px; min-width: 44px; border: 1px solid var(--bd); }
 
 /* Log day picker — the chip opens the in-app calendar popup. */
@@ -228,6 +227,17 @@ textarea.inp { resize: vertical; min-height: 60px; }
 .cal-cell.is-today { border-color: var(--bd); }
 .cal-cell.on { background: var(--rd); color: var(--wh); border-color: var(--rd); }
 .cal-blank { pointer-events: none; }
+/* Week mode highlights the whole row, rounded at both ends. */
+.cal-cell.in-week {
+    background: var(--rg); color: var(--rd); border-radius: 0;
+    /* Bridge the 4px grid gap so the week reads as one continuous band. */
+    box-shadow: -3px 0 0 var(--rg), 3px 0 0 var(--rg);
+}
+.cal-cell.in-week.week-start { border-top-left-radius: 10px; border-bottom-left-radius: 10px; box-shadow: 3px 0 0 var(--rg); }
+.cal-cell.in-week.week-end { border-top-right-radius: 10px; border-bottom-right-radius: 10px; box-shadow: -3px 0 0 var(--rg); }
+.cal-cell.in-week.week-start.week-end { box-shadow: none; }
+.cal-cell.in-week:hover:not(:disabled) { background: var(--rg); }
+.cal-hint { margin-top: 12px; text-align: center; font-size: 12px; color: var(--di); }
 .cal-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--rd); margin-top: 3px; }
 .cal-cell.on .cal-dot { background: var(--wh); }
 .cal-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
