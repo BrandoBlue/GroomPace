@@ -189,8 +189,59 @@ textarea.inp { resize: vertical; min-height: 60px; }
 .filter-bar { display: flex; gap: 6px; margin-bottom: var(--sp-md); background: var(--ca); padding: 6px; border-radius: 14px; align-items: center; }
 .filter-bar .sub-tab { flex: 1; padding: 12px 10px; text-align: center; min-height: 44px; }
 .week-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: var(--sp-md); }
-.week-nav-label { font-size: 14px; font-weight: 600; color: var(--tx); flex: 1; text-align: center; }
 .week-nav button { padding: 10px 14px; background: var(--ca); border-radius: 10px; color: var(--tm); font-weight: 600; min-height: 44px; min-width: 44px; border: 1px solid var(--bd); }
+
+/* Log day picker — the chip opens the in-app calendar popup. */
+.day-pick {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+    min-height: 44px; padding: 10px 12px; border-radius: 10px;
+    background: var(--ca); border: 1px solid var(--bd);
+    font-size: 14px; font-weight: 600; color: var(--tx); cursor: pointer;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.day-pick:hover { transform: translateY(-1px); box-shadow: var(--su); }
+.day-pick:active { transform: translateY(0); }
+.day-pick-icon { display: inline-flex; color: var(--rd); }
+
+.cal-pop { width: 100%; max-width: 340px; padding: 18px 16px 12px; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
+.cal-head button {
+    min-width: 40px; min-height: 40px; padding: 8px 10px; border-radius: 10px;
+    background: var(--ca); border: 1px solid var(--bd); color: var(--tm);
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.cal-month { font-family: Fraunces, serif; font-size: 18px; font-weight: 600; color: var(--tx); }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-dow {
+    margin-bottom: 6px; font-size: 11px; font-weight: 700; letter-spacing: 1px;
+    color: var(--di); text-transform: uppercase; text-align: center;
+}
+.cal-cell {
+    position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    aspect-ratio: 1; min-height: 40px; border-radius: 10px; border: 1px solid transparent;
+    background: none; color: var(--tx); font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: transform .12s ease, background .12s ease;
+}
+.cal-cell:hover:not(:disabled) { background: var(--ca); transform: translateY(-1px); }
+.cal-cell:disabled { opacity: .25; cursor: default; }
+.cal-cell.is-today { border-color: var(--bd); }
+.cal-cell.on { background: var(--rd); color: var(--wh); border-color: var(--rd); }
+.cal-blank { pointer-events: none; }
+/* Range mode paints the span as one band, rounded at both ends. The tint lives
+   on a pseudo-element that reaches exactly half the 4px grid gap on each side,
+   so neighbouring days meet with no seam and no double-darkened overlap. */
+.cal-cell.in-range { color: var(--rd); }
+.cal-cell.in-range::before {
+    content: ''; position: absolute; inset: 0 -2px; background: var(--rg);
+}
+.cal-cell.in-range.range-start::before { left: 0; border-top-left-radius: 10px; border-bottom-left-radius: 10px; }
+.cal-cell.in-range.range-end::before { right: 0; border-top-right-radius: 10px; border-bottom-right-radius: 10px; }
+.cal-cell.in-range > * { position: relative; }
+.cal-hint { margin-top: 12px; text-align: center; font-size: 12px; color: var(--di); }
+.cal-hint.pending { color: var(--rd); font-weight: 600; }
+.cal-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--rd); margin-top: 3px; }
+.cal-cell.on .cal-dot { background: var(--wh); }
+.cal-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
 
 .pb-banner {
     background: linear-gradient(135deg, var(--ro), var(--rd)); color: var(--wh);
