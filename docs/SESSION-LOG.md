@@ -18,6 +18,27 @@ only answered questions and changed no files, skip it — no entry needed.
 
 ---
 
+## 2026-08-06 — v0.16.0 · Log day picker + scroll that stays put
+
+**Did:** Two Log-tab fixes she asked for. (1) The "Today" filter is now a **Day**
+filter: arrows step a day at a time and the date chip in the middle is a native
+calendar popup (`.day-pick` label with an invisible `input[type=date]` over it,
+capped at today), so she can jump straight to a date instead of scrolling. New
+`S.logDate` (`'YYYY-MM-DD'`, null = today) plus `dayRange()`/`shiftDayKey()`;
+UI-only state, no schema change. (2) `R()` now snapshots `window.scrollY` and
+restores it after the re-render, so opening/closing a photo or a lightbox no
+longer throws her back to the top. Deliberate jumps opt out via `_scrollToTop`
+(tab switches, filter/day/week changes); the edit and manual-log forms open at
+the top and put her back on the same dog when closed (`openInlineForm()` /
+`closeInlineForm()`, `_formReturnY`).
+
+**Next:** Store submission — buy the Google Play account first (the 12-testers /
+14-day clock is the long pole).
+
+**Watch out:** The day-picker input is deliberately **id-less** — `R()`'s input
+snapshot restores by id and would put a stale date back after a change. Verified
+locally with seeded data; not merged to `main`.
+
 ## 2026-07-24 — Session continuity system (no app change)
 
 **Did:** Set up the catch-up trail so new sessions start informed without

@@ -192,6 +192,24 @@ textarea.inp { resize: vertical; min-height: 60px; }
 .week-nav-label { font-size: 14px; font-weight: 600; color: var(--tx); flex: 1; text-align: center; }
 .week-nav button { padding: 10px 14px; background: var(--ca); border-radius: 10px; color: var(--tm); font-weight: 600; min-height: 44px; min-width: 44px; border: 1px solid var(--bd); }
 
+/* Log day picker — the whole chip is a tap target for the native calendar. */
+.day-pick {
+    position: relative; flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+    min-height: 44px; padding: 10px 12px; border-radius: 10px;
+    background: var(--ca); border: 1px solid var(--bd);
+    font-size: 14px; font-weight: 600; color: var(--tx); cursor: pointer;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.day-pick:hover { transform: translateY(-1px); box-shadow: var(--su); }
+.day-pick:active { transform: translateY(0); }
+.day-pick-icon { display: inline-flex; color: var(--rd); }
+.day-pick-input {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    opacity: 0; padding: 0; margin: 0; border: none; background: none;
+    cursor: pointer; -webkit-appearance: none; appearance: none;
+}
+.day-pick-input::-webkit-calendar-picker-indicator { width: 100%; height: 100%; padding: 0; cursor: pointer; }
+
 .pb-banner {
     background: linear-gradient(135deg, var(--ro), var(--rd)); color: var(--wh);
     border-radius: 14px; padding: 14px 18px; font-size: 15px; font-weight: 600;

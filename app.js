@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.15.0';
+const APP_VERSION = '0.16.0';
 
 const SK = 'groompace-v5';
 
@@ -276,6 +276,7 @@ let S = {
     onboarded: false,
     logFilter: 'today',
     logWeekOffset: 0,
+    logDate: null,   // 'YYYY-MM-DD' for the Day filter; null = today
     theme: 'auto'
 };
 
@@ -285,6 +286,10 @@ let _toast = null;
 let _toastTimer = null;
 let _resetting = false;
 let _prevTab = null;
+// Set just before an R() that should deliberately land at the top of the page.
+let _scrollToTop = false;
+// Where she was in the list before a form took over the screen.
+let _formReturnY = 0;
 
 // Lightbox state holds array of photo refs and index
 let _lightbox = null; 
@@ -542,6 +547,7 @@ function load() {
             if (S.timerTotalPausedDuration === undefined) S.timerTotalPausedDuration = 0;
             if (!S.logFilter) S.logFilter = 'today';
             if (S.logWeekOffset === undefined) S.logWeekOffset = 0;
+            if (typeof S.logDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(S.logDate)) S.logDate = null;
             if (!['auto','light','dark'].includes(S.theme)) S.theme = 'auto';
         }
     } catch(e) {
@@ -788,10 +794,35 @@ function todayRange() {
     return { start: start.getTime(), end: end.getTime(), label: 'Today' };
 }
 
+// Shift a 'YYYY-MM-DD' key by whole days, staying in local time.
+function shiftDayKey(key, delta) {
+    const [y, m, d] = key.split('-').map(Number);
+    const dt = new Date(y, m - 1, d + delta);
+    return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+}
+
+// The single day the Log's Day filter is showing (defaults to today).
+function logDayKey() {
+    return S.logDate || dk();
+}
+
+function dayRange(key) {
+    const k = key || dk();
+    const [y, m, d] = k.split('-').map(Number);
+    const start = new Date(y, m - 1, d);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    const today = dk();
+    const label = k === today ? 'Today'
+        : k === shiftDayKey(today, -1) ? 'Yesterday'
+        : start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    return { start: start.getTime(), end: end.getTime(), label, key: k };
+}
+
 function filterLogs(logs) {
     if (S.logFilter === 'all') return logs;
     if (S.logFilter === 'today') {
-        const { start, end } = todayRange();
+        const { start, end } = dayRange(logDayKey());
         return logs.filter(l => l.ts && l.ts >= start && l.ts < end);
     }
     const { start, end } = weekRange(S.logWeekOffset || 0);
@@ -804,7 +835,7 @@ function hasSectionData(l) {
 }
 
 function filterLabel() {
-    if (S.logFilter === 'today') return todayRange().label;
+    if (S.logFilter === 'today') return dayRange(logDayKey()).label;
     if (S.logFilter === 'all') return 'All Time';
     return weekRange(S.logWeekOffset || 0).label;
 }
@@ -1268,6 +1299,9 @@ function R() {
     const ct = document.getElementById('ct'), nv = document.getElementById('nv'), mod = document.getElementById('modalRoot');
     const toastEl = document.getElementById('toastRoot');
     
+    // Re-rendering replaces #ct wholesale, which drops the page back to the top.
+    // Remember where she was so opening a photo or editing keeps her place.
+    const scrollY = window.scrollY || window.pageYOffset || 0;
     const inputSnapshot = {};
     const focusedId = document.activeElement ? document.activeElement.id : null;
     let selStart = null, selEnd = null;
@@ -1398,16 +1432,36 @@ function R() {
             }
         }
     }
+
+    // Restore the scroll position last, so nothing above (focus, scrollIntoView)
+    // can steal it. Tab switches intentionally start at the top.
+    if (!tabChanged && scrollY > 0 && !_scrollToTop) restoreScroll(scrollY);
+    _scrollToTop = false;
+}
+
+// Clamp to the new page height — a shorter render can't scroll as far.
+function restoreScroll(y) {
+    const apply = () => {
+        const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        window.scrollTo(0, Math.min(y, max));
+    };
+    apply();
+    // Images and late layout can change the height right after paint.
+    requestAnimationFrame(apply);
 }
 
 function go(t) {
-    vib(); S.tab = t; S.showForm = false; S.editId = null; S.viewDog = null; 
+    vib(); S.tab = t; S.showForm = false; S.editId = null; S.viewDog = null;
+    _scrollToTop = true; _formReturnY = 0;
     R(); window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
+// Re-render and land at the top — for switches that swap the whole list out.
+function topR() { _scrollToTop = true; R(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
 const ACTIONS = {
     'go-tab':            (el) => go(el.dataset.tab),
-    'go-log-form':       ()   => { vib(); S.tab = 'log'; S.showForm = true; R(); },
+    'go-log-form':       ()   => { vib(); S.tab = 'log'; S.showForm = true; _formReturnY = 0; R(); },
     'go-prep':           ()   => { vib(); S.tab = 'me'; S.sub2 = 'checklist'; R(); },
     'finish-onboard':    ()   => { vib(); S.onboarded = true; save(); R(); },
     'edit-log':          (el) => editLog(Number(el.dataset.id)),
@@ -1422,9 +1476,12 @@ const ACTIONS = {
     'set-sub':           (el) => { vib(); S.sub = el.dataset.sub; S.showBreedForm=false; S.editBreedKey=null; S.showStdForm=false; S.editStdId=null; R(); },
     'set-sub2':          (el) => { vib(); S.sub2 = el.dataset.sub2; S.viewDog = null; R(); },
     'set-theme':         (el) => { vib(); S.theme = el.dataset.theme; applyTheme(); save(); R(); },
-    'set-log-filter':    (el) => { vib(); S.logFilter = el.dataset.filter; if (el.dataset.filter !== 'week') S.logWeekOffset = 0; save(); R(); },
-    'log-week-prev':     ()   => { vib(); S.logWeekOffset = (S.logWeekOffset || 0) - 1; save(); R(); },
-    'log-week-next':     ()   => { vib(); if ((S.logWeekOffset || 0) < 0) { S.logWeekOffset = (S.logWeekOffset || 0) + 1; save(); R(); } },
+    'set-log-filter':    (el) => { vib(); S.logFilter = el.dataset.filter; if (el.dataset.filter !== 'week') S.logWeekOffset = 0; if (el.dataset.filter !== 'today') S.logDate = null; save(); topR(); },
+    'log-day-prev':      ()   => { vib(); S.logDate = shiftDayKey(logDayKey(), -1); save(); topR(); },
+    'log-day-next':      ()   => { vib(); if (logDayKey() < dk()) { S.logDate = shiftDayKey(logDayKey(), 1); save(); topR(); } },
+    'log-day-today':     ()   => { vib(); S.logDate = null; save(); topR(); },
+    'log-week-prev':     ()   => { vib(); S.logWeekOffset = (S.logWeekOffset || 0) - 1; save(); topR(); },
+    'log-week-next':     ()   => { vib(); if ((S.logWeekOffset || 0) < 0) { S.logWeekOffset = (S.logWeekOffset || 0) + 1; save(); topR(); } },
     'set-size':          (el) => { vib(); S.timerSize = el.dataset.size; save(); R(); },
     'set-size-form':     (el) => pSz(el.dataset.size),
     'set-size-edit':     (el) => eSz(el.dataset.size),
@@ -1440,9 +1497,9 @@ const ACTIONS = {
     'set-diff-edit':     (el) => eDf(Number(el.dataset.diff)),
     'set-rv-diff':       (el) => rvDiff(Number(el.dataset.diff)),
     'toggle-chk':        (el) => { vib(); const k = el.dataset.key; S.chk[k] = !S.chk[k]; save(); R(); },
-    'show-form':         ()   => { vib(); S.showForm = true; R(); },
-    'cancel-form':       ()   => { vib(); S.showForm = false; _phB = null; _phA = null; _svc = []; R(); },
-    'cancel-edit':       ()   => { vib(); S.editId = null; R(); },
+    'show-form':         ()   => { vib(); S.showForm = true; openInlineForm(); },
+    'cancel-form':       ()   => { vib(); S.showForm = false; _phB = null; _phA = null; _svc = []; closeInlineForm(); },
+    'cancel-edit':       ()   => { vib(); S.editId = null; closeInlineForm(); },
     'show-breed-form':   ()   => { vib(); S.showBreedForm = true; R(); },
     'cancel-breed-form': ()   => { vib(); S.showBreedForm = false; S.editBreedKey = null; R(); },
     'show-std-form':     ()   => { vib(); S.showStdForm = true; R(); },
@@ -1564,6 +1621,16 @@ function wireActions() {
             }
             // Timer notes type straight into state (no full R(), caret safe).
             if (e.target && e.target.id === 'tNotes') S.timerNotes = e.target.value;
+        });
+        // Log day picker — the calendar input has no id on purpose so R()'s
+        // input snapshot can't restore a stale date over the state-driven one.
+        document.addEventListener('change', (e) => {
+            if (!e.target || !e.target.dataset || e.target.dataset.role !== 'log-date') return;
+            const v = e.target.value;
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
+            vib();
+            S.logDate = v === dk() ? null : v;
+            save(); topR();
         });
     }
     const cancelBtn = document.getElementById('modalCancel');
@@ -1893,15 +1960,20 @@ function rvDiff(d) {
 function renderLog() {
     const filtered = filterLogs(S.logs);
     const label = filterLabel();
+    const dayKey = logDayKey();
+    const isToday = dayKey === dk();
+    const count = `${filtered.length} dog${filtered.length !== 1 ? 's' : ''}`;
 
     return `
     <div class="page">
         <h2 class="page-title">Groom Log</h2>
-        <p class="page-sub">${S.logFilter === 'all' ? 'Full history — use filters to focus on today or this week.' : 'Showing ' + esc(label.toLowerCase()) + '\'s grooms — tap a dog for full history.'}</p>
+        <p class="page-sub">${S.logFilter === 'all' ? 'Full history — use filters to focus on a day or a week.'
+            : S.logFilter === 'today' ? 'Showing ' + esc(label) + ' — tap the date to jump to any day.'
+            : 'Showing ' + esc(label.toLowerCase()) + '\'s grooms — tap a dog for full history.'}</p>
 
         ${!S.showForm && !S.editId ? `
         <div class="filter-bar">
-            <button class="sub-tab ${S.logFilter === 'today' ? 'on' : ''}" data-action="set-log-filter" data-filter="today" style="display:inline-flex;align-items:center;justify-content:center;gap:5px">${IC('sun')} Today</button>
+            <button class="sub-tab ${S.logFilter === 'today' ? 'on' : ''}" data-action="set-log-filter" data-filter="today" style="display:inline-flex;align-items:center;justify-content:center;gap:5px">${IC('sun')} Day</button>
             <button class="sub-tab ${S.logFilter === 'week' ? 'on' : ''}" data-action="set-log-filter" data-filter="week" style="display:inline-flex;align-items:center;justify-content:center;gap:5px">${IC('calendar')} Week</button>
             <button class="sub-tab ${S.logFilter === 'all' ? 'on' : ''}" data-action="set-log-filter" data-filter="all" style="display:inline-flex;align-items:center;justify-content:center;gap:5px">${IC('clipboard')} All</button>
         </div>
@@ -1910,8 +1982,18 @@ function renderLog() {
             <button data-action="log-week-prev" style="display:inline-flex;align-items:center;justify-content:center">${IC('arrowL')}</button>
             <span class="week-nav-label">${esc(label)} · ${filtered.length} dog${filtered.length !== 1 ? 's' : ''}</span>
             <button data-action="log-week-next" ${(S.logWeekOffset || 0) >= 0 ? 'disabled style="opacity:.35"' : 'style="display:inline-flex;align-items:center;justify-content:center"'}>${IC('arrowR')}</button>
-        </div>` : `
-        <div style="text-align:center;font-size:14px;font-weight:600;color:var(--tm);margin-bottom:14px">${esc(label)} · ${filtered.length} dog${filtered.length !== 1 ? 's' : ''}</div>`}` : ''}
+        </div>` : S.logFilter === 'today' ? `
+        <div class="week-nav">
+            <button data-action="log-day-prev" aria-label="Previous day" style="display:inline-flex;align-items:center;justify-content:center">${IC('arrowL')}</button>
+            <label class="day-pick" title="Pick a date">
+                <span class="day-pick-icon">${IC('calendar')}</span>
+                <span>${esc(label)} · ${count}</span>
+                <input type="date" class="day-pick-input" data-role="log-date" value="${dayKey}" max="${dk()}" aria-label="Pick a date">
+            </label>
+            <button data-action="log-day-next" ${isToday ? 'disabled style="opacity:.35" aria-label="Next day"' : 'aria-label="Next day" style="display:inline-flex;align-items:center;justify-content:center"'}>${IC('arrowR')}</button>
+        </div>
+        ${!isToday ? `<div style="text-align:center;margin-bottom:14px"><button class="btn-ghost" data-action="log-day-today">Back to today</button></div>` : ''}` : `
+        <div style="text-align:center;font-size:14px;font-weight:600;color:var(--tm);margin-bottom:14px">${esc(label)} · ${count}</div>`}` : ''}
         
         ${S.editId ? renderEditForm() : S.showForm ? renderLogForm() : `
         <button data-action="show-form" class="btn-primary" style="margin-bottom:20px;background:var(--rg);color:var(--rd);border:2px dashed rgba(212,132,154,.35);box-shadow:none;display:inline-flex;align-items:center;justify-content:center;gap:7px">${IC('paw')} Log a Groom Manually</button>`}
@@ -1919,7 +2001,7 @@ function renderLog() {
         ${filtered.length === 0 && !S.showForm && !S.editId ? `
         <div class="empty">
             <div class="empty-icon">${S.logFilter === 'today' ? IC('sun') : S.logFilter === 'week' ? IC('calendar') : IC('scissors')}</div>
-            <div class="empty-title">${S.logFilter === 'today' ? 'No grooms today yet' : S.logFilter === 'week' ? 'No grooms this week' : 'No grooms yet'}</div>
+            <div class="empty-title">${S.logFilter === 'today' ? (isToday ? 'No grooms today yet' : 'No grooms on ' + esc(label)) : S.logFilter === 'week' ? 'No grooms this week' : 'No grooms yet'}</div>
             <div class="empty-sub">${S.logFilter === 'all' ? 'Track your first groom to see trends and personal bests.' : 'Start the timer when your next dog hits the table.'}</div>
             <button data-action="go-tab" data-tab="timer" class="btn-primary" style="max-width:260px;margin:0 auto;display:inline-flex;align-items:center;justify-content:center;gap:7px">${IC('stopwatch')} Start Timer</button>
         </div>` : `
@@ -2100,23 +2182,24 @@ function submitLog() {
 
     S.logs.sort((a,b) => b.ts - a.ts);
     S.showForm = false; _sz = 'medium'; _df = 1; _phB = null; _phA = null; _svc = [];
-    save(); R();
+    save(); closeInlineForm();
 }
 
 // Edit Log Form
 let _edSz = 'medium', _edDf = 1, _edPhB = null, _edPhA = null, _edSvc = [];
 
 function editLog(id) {
-    vib(); S.editId = id;
+    vib();
     const l = S.logs.find(x => x.id === id);
     if (!l) return;
+    S.editId = id;
     _edSz = l.size || 'medium'; _edDf = l.diff || 1;
     _edPhB = l.before; _edPhA = l.after;
     // Light up whichever services the stored style names. Anything else it
     // holds (a style from before services existed) is shown in its own field
     // by renderEditForm so editing never silently discards it.
     _edSvc = serviceKeys(l.style);
-    R();
+    openInlineForm();
 }
 
 function renderEditForm() {
@@ -2220,7 +2303,24 @@ function saveEdit() {
     l.after = _edPhA;
     
     S.logs.sort((a,b) => b.ts - a.ts);
-    S.editId = null; save(); R();
+    S.editId = null; save(); closeInlineForm();
+}
+
+// Open a form that takes over the list: start at the top, but remember the
+// spot in the list so closing the form puts her back on the same dog.
+function openInlineForm() {
+    _formReturnY = window.scrollY || 0;
+    _scrollToTop = true;
+    R();
+    window.scrollTo(0, 0);
+}
+
+// Leave the form and land back on the dog she opened it from.
+function closeInlineForm() {
+    const y = _formReturnY;
+    _formReturnY = 0;
+    R();
+    if (y > 0) restoreScroll(y);
 }
 
 function delLog(id) {
