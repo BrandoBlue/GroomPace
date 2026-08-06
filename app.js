@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.17.0';
+const APP_VERSION = '0.18.0';
 
 const SK = 'groompace-v5';
 
@@ -277,6 +277,7 @@ let S = {
     logFilter: 'today',
     logWeekOffset: 0,
     logDate: null,   // 'YYYY-MM-DD' for the Day filter; null = today
+    logRange: null,  // { start, end } day keys for the Week filter; null = this week
     theme: 'auto'
 };
 
@@ -294,9 +295,10 @@ let _formReturnY = 0;
 // Lightbox state holds array of photo refs and index
 let _lightbox = null;
 
-// Log date picker: { mode: 'day' | 'week', month: 'YYYY-MM' } while the calendar
-// popup is open, null when closed. Built in-app rather than with
-// <input type="date"> so it looks the same — and actually opens — on every
+// Log date picker while the calendar popup is open, null when closed:
+// { mode: 'day' | 'week', month: 'YYYY-MM', sel: { start, end } }. In week mode
+// `sel.end` is null between the two taps of a range. Built in-app rather than
+// with <input type="date"> so it looks the same — and actually opens — on every
 // browser and inside the app wrapper.
 let _cal = null;
 
@@ -555,6 +557,11 @@ function load() {
             if (!['today', 'week'].includes(S.logFilter)) S.logFilter = 'today';
             if (S.logWeekOffset === undefined) S.logWeekOffset = 0;
             if (typeof S.logDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(S.logDate)) S.logDate = null;
+            const dayKey = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+            if (!S.logRange || !dayKey(S.logRange.start) || !dayKey(S.logRange.end) || S.logRange.start > S.logRange.end) {
+                // Saved on an older build? Carry its week over as the first range.
+                S.logRange = S.logWeekOffset ? weekKeysFor(S.logWeekOffset) : null;
+            }
             if (!['auto','light','dark'].includes(S.theme)) S.theme = 'auto';
         }
     } catch(e) {
@@ -835,12 +842,55 @@ function mondayKeyOf(key) {
     return dayKeyOf(dt.getTime());
 }
 
-// S.logWeekOffset that puts the Week filter on the week containing this day.
-function weekOffsetOf(key) {
-    const [ay, am, ad] = mondayKeyOf(key).split('-').map(Number);
-    const [by, bm, bd] = mondayKeyOf(dk()).split('-').map(Number);
-    const diff = new Date(ay, am - 1, ad).getTime() - new Date(by, bm - 1, bd).getTime();
-    return Math.round(diff / (7 * 864e5));
+// The Mon–Sun day keys of a week, offset in weeks from the current one.
+function weekKeysFor(offset) {
+    const w = weekRange(offset || 0);
+    return { start: dayKeyOf(w.start), end: dayKeyOf(w.end - 864e5) };
+}
+
+// Whole days from one key to another, inclusive of both ends.
+function daysBetween(a, b) {
+    const [ay, am, ad] = a.split('-').map(Number);
+    const [by, bm, bd] = b.split('-').map(Number);
+    const diff = new Date(by, bm - 1, bd).getTime() - new Date(ay, am - 1, ad).getTime();
+    return Math.round(diff / 864e5) + 1;
+}
+
+// The span the Week filter is showing. Defaults to this Mon–Sun week; once she
+// picks her own start/end in the calendar, S.logRange holds it.
+function rangeKeys() {
+    const r = S.logRange;
+    if (r && r.start && r.end && r.start <= r.end) return { start: r.start, end: r.end };
+    return weekKeysFor(0);
+}
+
+function rangeBounds() {
+    const { start, end } = rangeKeys();
+    const [sy, sm, sd] = start.split('-').map(Number);
+    const [ey, em, ed] = end.split('-').map(Number);
+    const from = new Date(sy, sm - 1, sd);
+    const to = new Date(ey, em - 1, ed + 1); // exclusive
+    return { start: from.getTime(), end: to.getTime() };
+}
+
+function rangeLabel() {
+    const { start, end } = rangeKeys();
+    const thisWeek = weekKeysFor(0), lastWeek = weekKeysFor(-1);
+    if (start === thisWeek.start && end === thisWeek.end) return 'This Week';
+    if (start === lastWeek.start && end === lastWeek.end) return 'Last Week';
+    if (start === end) return dayRange(start).label;
+    const fmt = (k) => {
+        const [y, m, d] = k.split('-').map(Number);
+        return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    };
+    return fmt(start) + ' – ' + fmt(end);
+}
+
+// Step the whole span back/forward by its own length.
+function shiftRange(delta) {
+    const { start, end } = rangeKeys();
+    const len = daysBetween(start, end) * delta;
+    return { start: shiftDayKey(start, len), end: shiftDayKey(end, len) };
 }
 
 // Shift a 'YYYY-MM' month key by whole months.
@@ -868,7 +918,7 @@ function filterLogs(logs) {
         const { start, end } = dayRange(logDayKey());
         return logs.filter(l => l.ts && l.ts >= start && l.ts < end);
     }
-    const { start, end } = weekRange(S.logWeekOffset || 0);
+    const { start, end } = rangeBounds();
     return logs.filter(l => l.ts && l.ts >= start && l.ts < end);
 }
 
@@ -879,7 +929,7 @@ function hasSectionData(l) {
 
 function filterLabel() {
     if (S.logFilter !== 'week') return dayRange(logDayKey()).label;
-    return weekRange(S.logWeekOffset || 0).label;
+    return rangeLabel();
 }
 
 function renderSectionBreakdown(l) {
@@ -1520,35 +1570,48 @@ const ACTIONS = {
     'set-sub':           (el) => { vib(); S.sub = el.dataset.sub; S.showBreedForm=false; S.editBreedKey=null; S.showStdForm=false; S.editStdId=null; R(); },
     'set-sub2':          (el) => { vib(); S.sub2 = el.dataset.sub2; S.viewDog = null; R(); },
     'set-theme':         (el) => { vib(); S.theme = el.dataset.theme; applyTheme(); save(); R(); },
-    'set-log-filter':    (el) => { vib(); S.logFilter = el.dataset.filter; if (el.dataset.filter !== 'week') S.logWeekOffset = 0; if (el.dataset.filter !== 'today') S.logDate = null; save(); topR(); },
+    'set-log-filter':    (el) => { vib(); S.logFilter = el.dataset.filter; if (el.dataset.filter !== 'week') S.logRange = null; if (el.dataset.filter !== 'today') S.logDate = null; save(); topR(); },
     'noop':              ()   => {},
     'open-day-cal':      ()   => { vib(); _cal = { mode: 'day', month: logDayKey().slice(0, 7) }; R(); },
-    'open-week-cal':     ()   => { vib(); _cal = { mode: 'week', month: dayKeyOf(weekRange(S.logWeekOffset || 0).start).slice(0, 7) }; R(); },
-    'close-cal':         ()   => { vib(); _cal = null; R(); },
+    'open-week-cal':     ()   => { vib(); _cal = { mode: 'week', month: rangeKeys().start.slice(0, 7), sel: rangeKeys() }; R(); },
+    'close-cal':         ()   => { vib(); _cal = null; topR(); },
     'cal-prev-month':    ()   => { vib(); _cal.month = shiftMonthKey(_cal.month, -1); R(); },
     'cal-next-month':    ()   => { vib(); if (_cal.month < dk().slice(0, 7)) { _cal.month = shiftMonthKey(_cal.month, 1); R(); } },
     'cal-jump-today':    ()   => {
         vib();
-        if (_cal && _cal.mode === 'week') S.logWeekOffset = 0; else S.logDate = null;
-        _cal = null; save(); topR();
+        if (_cal.mode === 'week') { S.logRange = null; _cal.sel = rangeKeys(); _cal.month = dk().slice(0, 7); }
+        else { S.logDate = null; _cal.month = dk().slice(0, 7); }
+        save(); R();
     },
+    // The popup stays open on every pick — she closes it when she's happy.
     'pick-day':          (el) => {
         const key = el.dataset.key;
         if (!key) return;
-        const week = _cal && _cal.mode === 'week';
-        if (week ? mondayKeyOf(key) > mondayKeyOf(dk()) : key > dk()) return;
         vib();
-        _cal = null;
-        if (week) S.logWeekOffset = weekOffsetOf(key);
-        else S.logDate = key === dk() ? null : key;
-        save(); topR();
+        if (_cal.mode !== 'week') {
+            if (key > dk()) return;
+            S.logDate = key === dk() ? null : key;
+            save(); R();
+            return;
+        }
+        const sel = _cal.sel || {};
+        // A finished range (or a tap before the start) begins a new one.
+        if (!sel.start || sel.end || key < sel.start) {
+            _cal.sel = { start: key, end: null };
+        } else {
+            _cal.sel = { start: sel.start, end: key };
+            S.logRange = { start: sel.start, end: key };
+            save();
+        }
+        R();
     },
     'log-day-prev':      ()   => { vib(); S.logDate = shiftDayKey(logDayKey(), -1); save(); topR(); },
     'log-day-next':      ()   => { vib(); if (logDayKey() < dk()) { S.logDate = shiftDayKey(logDayKey(), 1); save(); topR(); } },
     'log-day-today':     ()   => { vib(); S.logDate = null; save(); topR(); },
-    'log-week-prev':     ()   => { vib(); S.logWeekOffset = (S.logWeekOffset || 0) - 1; save(); topR(); },
-    'log-week-next':     ()   => { vib(); if ((S.logWeekOffset || 0) < 0) { S.logWeekOffset = (S.logWeekOffset || 0) + 1; save(); topR(); } },
-    'log-week-today':    ()   => { vib(); S.logWeekOffset = 0; save(); topR(); },
+    // The arrows step the span by its own length, whatever she picked.
+    'log-week-prev':     ()   => { vib(); S.logRange = shiftRange(-1); save(); topR(); },
+    'log-week-next':     ()   => { vib(); if (rangeKeys().end < dk()) { S.logRange = shiftRange(1); save(); topR(); } },
+    'log-week-today':    ()   => { vib(); S.logRange = null; save(); topR(); },
     'set-size':          (el) => { vib(); S.timerSize = el.dataset.size; save(); R(); },
     'set-size-form':     (el) => pSz(el.dataset.size),
     'set-size-edit':     (el) => eSz(el.dataset.size),
@@ -2019,14 +2082,15 @@ function renderLog() {
     const label = filterLabel();
     const dayKey = logDayKey();
     const isToday = dayKey === dk();
-    const isThisWeek = (S.logWeekOffset || 0) === 0;
+    const isThisWeek = !S.logRange;
+    const atLatestRange = rangeKeys().end >= dk();
     const week = S.logFilter === 'week';
     const count = `${filtered.length} dog${filtered.length !== 1 ? 's' : ''}`;
 
     return `
     <div class="page">
         <h2 class="page-title">Groom Log</h2>
-        <p class="page-sub">${week ? 'Showing ' + esc(label.toLowerCase()) + ' — tap the dates to jump to any week.'
+        <p class="page-sub">${week ? 'Showing ' + esc(label.toLowerCase()) + ' — tap the dates to pick any range.'
             : 'Showing ' + esc(label) + ' — tap the date to jump to any day.'}</p>
 
         ${!S.showForm && !S.editId ? `
@@ -2036,12 +2100,12 @@ function renderLog() {
         </div>
         ${week ? `
         <div class="week-nav">
-            <button data-action="log-week-prev" aria-label="Previous week" style="display:inline-flex;align-items:center;justify-content:center">${IC('arrowL')}</button>
-            <button class="day-pick" data-action="open-week-cal" aria-label="Pick a week">
+            <button data-action="log-week-prev" aria-label="Previous span" style="display:inline-flex;align-items:center;justify-content:center">${IC('arrowL')}</button>
+            <button class="day-pick" data-action="open-week-cal" aria-label="Pick a date range">
                 <span class="day-pick-icon">${IC('calendar')}</span>
                 <span>${esc(label)} · ${count}</span>
             </button>
-            <button data-action="log-week-next" ${isThisWeek ? 'disabled style="opacity:.35" aria-label="Next week"' : 'aria-label="Next week" style="display:inline-flex;align-items:center;justify-content:center"'}>${IC('arrowR')}</button>
+            <button data-action="log-week-next" ${atLatestRange ? 'disabled style="opacity:.35" aria-label="Next span"' : 'aria-label="Next span" style="display:inline-flex;align-items:center;justify-content:center"'}>${IC('arrowR')}</button>
         </div>
         ${!isThisWeek ? `<div style="text-align:center;margin-bottom:14px"><button class="btn-ghost" data-action="log-week-today">Back to this week</button></div>` : ''}` : `
         <div class="week-nav">
@@ -2123,13 +2187,16 @@ function renderLog() {
 }
 
 // Month-grid popup behind both date chips. Monday-first, like weekRange().
-// Day mode selects one date; week mode selects the whole week a date sits in.
+// Day mode selects one date; week mode selects a start day then an end day.
+// It stays open after a tap — she closes it herself, so a mis-tap is just
+// another tap away from being fixed.
 function renderCalendar() {
     const week = _cal.mode === 'week';
     const today = dk();
-    const thisWeek = mondayKeyOf(today);
     const selDay = logDayKey();
-    const selWeek = mondayKeyOf(dayKeyOf(weekRange(S.logWeekOffset || 0).start));
+    const sel = _cal.sel || {};
+    const pending = week && sel.start && !sel.end;   // waiting on the end day
+    const from = sel.start, to = sel.end;
     const [y, m] = _cal.month.split('-').map(Number);
     const first = new Date(y, m - 1, 1);
     const monthLabel = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -2142,22 +2209,27 @@ function renderCalendar() {
     for (let i = 0; i < lead; i++) cells += '<span class="cal-cell cal-blank"></span>';
     for (let d = 1; d <= days; d++) {
         const key = y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
-        const monday = mondayKeyOf(key);
         const n = counts[key] || 0;
-        // Week mode picks whole weeks, so a future day in the current week is
-        // still a valid tap; day mode stops at today.
-        const off = week ? monday > thisWeek : key > today;
-        const on = week ? monday === selWeek : key === selDay;
+        const col = (lead + d - 1) % 7;
+        // Day mode stops at today; a range may reach into the rest of this week.
+        const off = week ? false : key > today;
+        const inRange = week && from && (to ? key >= from && key <= to : key === from);
         const cls = 'cal-cell'
-            + (on ? (week ? ' in-week' : ' on') : '')
-            + (week && on && (d === 1 || (d + lead - 1) % 7 === 0) ? ' week-start' : '')
-            + (week && on && ((d + lead) % 7 === 0 || d === days) ? ' week-end' : '')
+            + (inRange ? ' in-range' : '')
+            + (!week && key === selDay ? ' on' : '')
+            + (inRange && (key === from || col === 0 || d === 1) ? ' range-start' : '')
+            + (inRange && (key === (to || from) || col === 6 || d === days) ? ' range-end' : '')
             + (key === today ? ' is-today' : '');
         cells += `<button class="${cls}" data-action="pick-day" data-key="${key}" ${off ? 'disabled' : ''} aria-label="${d} — ${n} groom${n !== 1 ? 's' : ''}">
             <span class="cal-num">${d}</span>
             ${n ? '<span class="cal-dot"></span>' : ''}
         </button>`;
     }
+
+    const fromLabel = pending ? dayRange(from).label : '';
+    const hint = !week ? 'Dots mark days you groomed'
+        : pending ? 'From ' + esc(fromLabel) + ' — now tap the last day'
+        : esc(rangeLabel()) + ' · tap a start day, then an end day';
 
     return `
     <div class="modal-backdrop" data-action="close-cal">
@@ -2171,10 +2243,10 @@ function renderCalendar() {
                 ${['M','T','W','T','F','S','S'].map(d => `<span>${d}</span>`).join('')}
             </div>
             <div class="cal-grid">${cells}</div>
-            <div class="cal-hint">${week ? 'Tap any day to see that whole week' : 'Dots mark days you groomed'}</div>
+            <div class="cal-hint${pending ? ' pending' : ''}">${hint}</div>
             <div class="cal-foot">
                 <button class="btn-ghost" data-action="cal-jump-today">${week ? 'This week' : 'Today'}</button>
-                <button class="btn-ghost" data-action="close-cal">Close</button>
+                <button class="btn-ghost" data-action="close-cal">Done</button>
             </div>
         </div>
     </div>`;

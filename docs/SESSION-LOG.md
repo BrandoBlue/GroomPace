@@ -18,6 +18,26 @@ only answered questions and changed no files, skip it — no entry needed.
 
 ---
 
+## 2026-08-06 — v0.18.0 · Date-range picker, popup stays open
+
+**Did:** Two fixes on her feedback. (1) The calendar no longer closes on a pick —
+every tap re-renders in place and she closes it with Done or the backdrop, so a
+mis-tap is one tap from being fixed. (2) The Week chip is now a hotel-style
+range: first tap sets the start (hint switches to "From <day> — now tap the last
+day"), second tap applies the span live; tapping before the start restarts the
+selection. The Week filter is therefore an arbitrary span, held in
+`S.logRange = { start, end }` (null = this Mon–Sun week) with `rangeKeys()` /
+`rangeBounds()` / `rangeLabel()` / `shiftRange()` around it. The chip arrows now
+step the span by its own length rather than by a fixed week. A saved
+`logWeekOffset` from an older build is converted to a real range on load.
+
+**Next:** Unchanged — store submission, Google Play account first.
+
+**Watch out:** `S.logWeekOffset` survives in state only as that migration input;
+nothing reads it after `load()`. The band tint is a `::before` reaching half the
+grid gap on each side — don't give `.cal-cell.in-range` a background or the
+seams come back.
+
 ## 2026-08-06 — v0.17.0 · Week calendar, All filter retired
 
 **Did:** The Week chip now opens the same calendar popup in week mode — tapping

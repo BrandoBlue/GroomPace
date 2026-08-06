@@ -227,17 +227,18 @@ textarea.inp { resize: vertical; min-height: 60px; }
 .cal-cell.is-today { border-color: var(--bd); }
 .cal-cell.on { background: var(--rd); color: var(--wh); border-color: var(--rd); }
 .cal-blank { pointer-events: none; }
-/* Week mode highlights the whole row, rounded at both ends. */
-.cal-cell.in-week {
-    background: var(--rg); color: var(--rd); border-radius: 0;
-    /* Bridge the 4px grid gap so the week reads as one continuous band. */
-    box-shadow: -3px 0 0 var(--rg), 3px 0 0 var(--rg);
+/* Range mode paints the span as one band, rounded at both ends. The tint lives
+   on a pseudo-element that reaches exactly half the 4px grid gap on each side,
+   so neighbouring days meet with no seam and no double-darkened overlap. */
+.cal-cell.in-range { color: var(--rd); }
+.cal-cell.in-range::before {
+    content: ''; position: absolute; inset: 0 -2px; background: var(--rg);
 }
-.cal-cell.in-week.week-start { border-top-left-radius: 10px; border-bottom-left-radius: 10px; box-shadow: 3px 0 0 var(--rg); }
-.cal-cell.in-week.week-end { border-top-right-radius: 10px; border-bottom-right-radius: 10px; box-shadow: -3px 0 0 var(--rg); }
-.cal-cell.in-week.week-start.week-end { box-shadow: none; }
-.cal-cell.in-week:hover:not(:disabled) { background: var(--rg); }
+.cal-cell.in-range.range-start::before { left: 0; border-top-left-radius: 10px; border-bottom-left-radius: 10px; }
+.cal-cell.in-range.range-end::before { right: 0; border-top-right-radius: 10px; border-bottom-right-radius: 10px; }
+.cal-cell.in-range > * { position: relative; }
 .cal-hint { margin-top: 12px; text-align: center; font-size: 12px; color: var(--di); }
+.cal-hint.pending { color: var(--rd); font-weight: 600; }
 .cal-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--rd); margin-top: 3px; }
 .cal-cell.on .cal-dot { background: var(--wh); }
 .cal-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
