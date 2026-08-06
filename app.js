@@ -4,7 +4,7 @@
 // ES modules have their own scope; migrating those handlers is deferred.
 // Keep this tag: <script src="app.js"></script> at end of <body>.
 
-const APP_VERSION = '0.16.0';
+const APP_VERSION = '0.16.1';
 
 const SK = 'groompace-v5';
 
@@ -292,7 +292,12 @@ let _scrollToTop = false;
 let _formReturnY = 0;
 
 // Lightbox state holds array of photo refs and index
-let _lightbox = null; 
+let _lightbox = null;
+
+// Log day picker: the 'YYYY-MM' the calendar popup is showing, or null when
+// closed. Built in-app rather than with <input type="date"> so it looks the
+// same — and actually opens — on every browser and inside the app wrapper.
+let _dayCal = null;
 
 // ── Photo Storage (IndexedDB) ──
 const DB_NAME = 'groompace-photos';
@@ -804,6 +809,26 @@ function shiftDayKey(key, delta) {
 // The single day the Log's Day filter is showing (defaults to today).
 function logDayKey() {
     return S.logDate || dk();
+}
+
+// Local-time 'YYYY-MM-DD' for a timestamp — matches dk()'s format.
+function dayKeyOf(ts) {
+    const d = new Date(ts);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// { 'YYYY-MM-DD': grooms that day } — powers the calendar's busy dots.
+function groomsByDay() {
+    const counts = {};
+    S.logs.forEach(l => { if (l.ts) { const k = dayKeyOf(l.ts); counts[k] = (counts[k] || 0) + 1; } });
+    return counts;
+}
+
+// Shift a 'YYYY-MM' month key by whole months.
+function shiftMonthKey(key, delta) {
+    const [y, m] = key.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 }
 
 function dayRange(key) {
@@ -1337,6 +1362,8 @@ function R() {
                 </div>
             </div>
         </div>`;
+    } else if (_dayCal) {
+        mod.innerHTML = renderDayCalendar();
     } else if (_lightbox && _lightbox.refs) {
         const src = photoSrc(_lightbox.refs[_lightbox.index]);
         const label = _lightbox.labels[_lightbox.index];
@@ -1477,6 +1504,20 @@ const ACTIONS = {
     'set-sub2':          (el) => { vib(); S.sub2 = el.dataset.sub2; S.viewDog = null; R(); },
     'set-theme':         (el) => { vib(); S.theme = el.dataset.theme; applyTheme(); save(); R(); },
     'set-log-filter':    (el) => { vib(); S.logFilter = el.dataset.filter; if (el.dataset.filter !== 'week') S.logWeekOffset = 0; if (el.dataset.filter !== 'today') S.logDate = null; save(); topR(); },
+    'noop':              ()   => {},
+    'open-day-cal':      ()   => { vib(); _dayCal = logDayKey().slice(0, 7); R(); },
+    'close-day-cal':     ()   => { vib(); _dayCal = null; R(); },
+    'cal-prev-month':    ()   => { vib(); _dayCal = shiftMonthKey(_dayCal, -1); R(); },
+    'cal-next-month':    ()   => { vib(); if (_dayCal < dk().slice(0, 7)) { _dayCal = shiftMonthKey(_dayCal, 1); R(); } },
+    'cal-jump-today':    ()   => { vib(); _dayCal = null; S.logDate = null; save(); topR(); },
+    'pick-day':          (el) => {
+        const key = el.dataset.key;
+        if (!key || key > dk()) return;
+        vib();
+        _dayCal = null;
+        S.logDate = key === dk() ? null : key;
+        save(); topR();
+    },
     'log-day-prev':      ()   => { vib(); S.logDate = shiftDayKey(logDayKey(), -1); save(); topR(); },
     'log-day-next':      ()   => { vib(); if (logDayKey() < dk()) { S.logDate = shiftDayKey(logDayKey(), 1); save(); topR(); } },
     'log-day-today':     ()   => { vib(); S.logDate = null; save(); topR(); },
@@ -1621,16 +1662,6 @@ function wireActions() {
             }
             // Timer notes type straight into state (no full R(), caret safe).
             if (e.target && e.target.id === 'tNotes') S.timerNotes = e.target.value;
-        });
-        // Log day picker — the calendar input has no id on purpose so R()'s
-        // input snapshot can't restore a stale date over the state-driven one.
-        document.addEventListener('change', (e) => {
-            if (!e.target || !e.target.dataset || e.target.dataset.role !== 'log-date') return;
-            const v = e.target.value;
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
-            vib();
-            S.logDate = v === dk() ? null : v;
-            save(); topR();
         });
     }
     const cancelBtn = document.getElementById('modalCancel');
@@ -1985,11 +2016,10 @@ function renderLog() {
         </div>` : S.logFilter === 'today' ? `
         <div class="week-nav">
             <button data-action="log-day-prev" aria-label="Previous day" style="display:inline-flex;align-items:center;justify-content:center">${IC('arrowL')}</button>
-            <label class="day-pick" title="Pick a date">
+            <button class="day-pick" data-action="open-day-cal" aria-label="Pick a date">
                 <span class="day-pick-icon">${IC('calendar')}</span>
                 <span>${esc(label)} · ${count}</span>
-                <input type="date" class="day-pick-input" data-role="log-date" value="${dayKey}" max="${dk()}" aria-label="Pick a date">
-            </label>
+            </button>
             <button data-action="log-day-next" ${isToday ? 'disabled style="opacity:.35" aria-label="Next day"' : 'aria-label="Next day" style="display:inline-flex;align-items:center;justify-content:center"'}>${IC('arrowR')}</button>
         </div>
         ${!isToday ? `<div style="text-align:center;margin-bottom:14px"><button class="btn-ghost" data-action="log-day-today">Back to today</button></div>` : ''}` : `
@@ -2059,6 +2089,50 @@ function renderLog() {
                 </div>
             </div>`;
         }).join('') : ''}`}
+    </div>`;
+}
+
+// Month-grid popup for the Log's Day filter. Monday-first, like weekRange().
+function renderDayCalendar() {
+    const sel = logDayKey();
+    const today = dk();
+    const [y, m] = _dayCal.split('-').map(Number);
+    const first = new Date(y, m - 1, 1);
+    const monthLabel = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const days = new Date(y, m, 0).getDate();
+    const lead = (first.getDay() + 6) % 7;
+    const counts = groomsByDay();
+    const atCurrentMonth = _dayCal >= today.slice(0, 7);
+
+    let cells = '';
+    for (let i = 0; i < lead; i++) cells += '<span class="cal-cell cal-blank"></span>';
+    for (let d = 1; d <= days; d++) {
+        const key = y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+        const n = counts[key] || 0;
+        const cls = 'cal-cell' + (key === sel ? ' on' : '') + (key === today ? ' is-today' : '');
+        cells += `<button class="${cls}" data-action="pick-day" data-key="${key}" ${key > today ? 'disabled' : ''} aria-label="${d} — ${n} groom${n !== 1 ? 's' : ''}">
+            <span class="cal-num">${d}</span>
+            ${n ? '<span class="cal-dot"></span>' : ''}
+        </button>`;
+    }
+
+    return `
+    <div class="modal-backdrop" data-action="close-day-cal">
+        <div class="c fi cal-pop" data-action="noop">
+            <div class="cal-head">
+                <button data-action="cal-prev-month" aria-label="Previous month">${IC('arrowL')}</button>
+                <span class="cal-month">${esc(monthLabel)}</span>
+                <button data-action="cal-next-month" ${atCurrentMonth ? 'disabled style="opacity:.35"' : ''} aria-label="Next month">${IC('arrowR')}</button>
+            </div>
+            <div class="cal-grid cal-dow">
+                ${['M','T','W','T','F','S','S'].map(d => `<span>${d}</span>`).join('')}
+            </div>
+            <div class="cal-grid">${cells}</div>
+            <div class="cal-foot">
+                <button class="btn-ghost" data-action="cal-jump-today">Today</button>
+                <button class="btn-ghost" data-action="close-day-cal">Close</button>
+            </div>
+        </div>
     </div>`;
 }
 

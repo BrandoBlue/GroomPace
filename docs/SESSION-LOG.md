@@ -18,6 +18,23 @@ only answered questions and changed no files, skip it — no entry needed.
 
 ---
 
+## 2026-08-06 — v0.16.1 · In-app calendar popup
+
+**Did:** The v0.16.0 date chip used a transparent `<input type="date">` over the
+label — it was clickable but never opened a picker (Chrome only opens on the
+calendar indicator, and hiding the input kills that). Replaced it with an
+in-app month grid rendered into `modalRoot` (`renderDayCalendar()`, module state
+`_dayCal` = the 'YYYY-MM' on screen). Monday-first, a dot on every day that has
+grooms, future days disabled, month arrows, Today/Close. Same `data-action`
+pattern as everything else, so it works identically on web and in the Capacitor
+wrapper. The panel carries `data-action="noop"` so clicks inside it don't hit
+the backdrop's close.
+
+**Next:** Unchanged — store submission, Google Play account first.
+
+**Watch out:** `_dayCal` sits in R()'s modal branch *above* `_lightbox`; keep
+that order or a photo opened from a calendar day would render behind it.
+
 ## 2026-08-06 — v0.16.0 · Log day picker + scroll that stays put
 
 **Did:** Two Log-tab fixes she asked for. (1) The "Today" filter is now a **Day**
