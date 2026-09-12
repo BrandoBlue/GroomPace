@@ -3310,8 +3310,8 @@ function importData(e) {
     if (!file) return;
     e.target.value = '';
     
-    if (file.size > 20 * 1024 * 1024) {
-        showToast('File is too large to import (over 20MB).', 'error', 6000);
+    if (file.size > 250 * 1024 * 1024) {
+        showToast('File is too large to import (over 250MB).', 'error', 6000);
         return;
     }
     
